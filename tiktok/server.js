@@ -24,8 +24,8 @@ function unb64url(s){
 function key(){
   return crypto.createHash('sha256').update(BRIDGE_SECRET||'fuoconero-tiktok').digest();
 }
-function makeState(returnHost=''){
-  const payload=Buffer.from(JSON.stringify({ts:Date.now(),nonce:b64url(crypto.randomBytes(18)),return_host:String(returnHost||'')}));
+function makeState(returnHost='',redirectUri=''){
+  const payload=Buffer.from(JSON.stringify({ts:Date.now(),nonce:b64url(crypto.randomBytes(18)),return_host:String(returnHost||''),redirect_uri:String(redirectUri||'')}));
   const p=b64url(payload);
   const sig=b64url(crypto.createHmac('sha256',key()).update(p).digest());
   return p+'.'+sig;
@@ -355,10 +355,13 @@ app.get('/connect',(req,res)=>{
   u.searchParams.set('client_key',CLIENT_KEY);
   u.searchParams.set('response_type','code');
   u.searchParams.set('scope','user.info.basic,video.publish');
-  u.searchParams.set('redirect_uri',REDIRECT_URI);
   const host=String(req.get('host')||'').split(':')[0].toLowerCase();
   const returnHost=host==='social.fuoconero.com'?'social.fuoconero.com':'';
-  u.searchParams.set('state',makeState(returnHost));
+  const callbackUri=returnHost==='social.fuoconero.com'
+    ? 'https://social.fuoconero.com/oauth/callback'
+    : REDIRECT_URI;
+  u.searchParams.set('redirect_uri',callbackUri);
+  u.searchParams.set('state',makeState(returnHost,callbackUri));
   res.redirect(u.toString());
 });
 
@@ -368,12 +371,15 @@ app.get('/oauth/callback',async(req,res)=>{
     const stateData=readState(String(state||''));
     if(error) return res.status(400).send('TikTok ha rifiutato l’autorizzazione: '+String(error_description||error));
     if(!code||!stateData) return res.status(400).send('Richiesta OAuth non valida o scaduta');
+    const callbackUri=stateData.redirect_uri==='https://social.fuoconero.com/oauth/callback'
+      ? stateData.redirect_uri
+      : REDIRECT_URI;
     const t=await tokenRequest({
       client_key:CLIENT_KEY,
       client_secret:CLIENT_SECRET,
       code:String(code),
       grant_type:'authorization_code',
-      redirect_uri:REDIRECT_URI
+      redirect_uri:callbackUri
     });
     await saveTokens({
       ...t,
