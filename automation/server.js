@@ -478,8 +478,8 @@ async function startupSelftest() {
       const blogRendered = await renderBlog({
         article,
         plan,
-        voiceUrl: '',
-        musicUrl: '',
+        voiceUrl: process.env.BLOG_TEST_VOICE_URL || '',
+        musicUrl: process.env.BLOG_TEST_MUSIC_URL || '',
         duration: 17
       });
       const blogVideo = await fetch(blogRendered.video_url, {
@@ -497,6 +497,7 @@ async function startupSelftest() {
           bytes: blogBytes.byteLength,
           width: blogRendered.width || 1080,
           height: blogRendered.height || 1920,
+          audio: blogRendered.audio || {},
           published: false
         })
       );
