@@ -520,13 +520,24 @@ app.listen(PORT, () => {
   console.log('fuoconero automation listening on ' + PORT);
   startupSelftest();
   if (PUBLISH_PIN) {
-    fetch(SOCIAL_BRIDGE_URL + '/internal/pruriti-social-test', {
-      method: 'POST',
-      headers: { 'X-Publish-Pin': PUBLISH_PIN },
-      signal: AbortSignal.timeout(600000)
-    })
-      .then(async (r) => console.log('PRURITI_SOCIAL_TEST ' + r.status + ' ' + (await r.text()).slice(0,5000)))
-      .catch((e) => console.error('PRURITI_SOCIAL_TEST_FAILED ' + detail(e)));
+    (async () => {
+      const videoUrl = 'https://d2jqrm6oza8nb6.cloudfront.net/datasets/11d9d99a-6556-4986-95a7-b2f5309b44f8.mp4?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiNmYxODQyODE3M2MxYTAzMSIsImJ1Y2tldCI6InJ1bndheS1kYXRhc2V0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc5MDA3NTI2NX0.bxgGb3lho96aeK8eb5odbXbBWv0DQ8yHK2_g_c_rfXo';
+      const caption = 'PRURITI — Quando imparare significa modificare la carne.\\n\\nImparare non significa soltanto sapere qualcosa in più. Significa cambiare fisicamente il cervello. I ricordi non stanno dentro un archivio. In parte, sono l\\'archivio.\\n\\nLeggi l\\'articolo completo su fuoconero.com\\n\\n#Fuoconero #Pruriti #Poesie #Neuroscienze #Scrittura';
+      try {
+        const results = await publishRendered({
+          videoUrl,
+          caption,
+          platform: 'both',
+          youtube: true,
+          youtubeTitle: 'PRURITI | Fuoconero',
+          youtubeDescription: caption,
+          youtubeTags: 'Fuoconero,Pruriti,Poesie,Neuroscienze,Scrittura'
+        });
+        console.log('PRURITI_SOCIAL_TEST_DIRECT ' + JSON.stringify(results).slice(0,5000));
+      } catch (e) {
+        console.error('PRURITI_SOCIAL_TEST_DIRECT_FAILED ' + detail(e));
+      }
+    })();
   }
 
 
