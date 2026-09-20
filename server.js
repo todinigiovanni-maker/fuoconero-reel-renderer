@@ -10,7 +10,7 @@ const upload = multer({ dest: '/tmp/uploads', limits: { fileSize: 40 * 1024 * 10
 const PORT = process.env.PORT || 8080;
 const SECRET = process.env.RENDERER_SECRET || '';
 const PUBLIC_DIR = '/tmp/public-media';
-const PUBLIC_TTL_MS = 60 * 60 * 1000;
+const PUBLIC_TTL_MS = Math.max(60 * 60 * 1000, Number(process.env.PUBLIC_TTL_MS || 24 * 60 * 60 * 1000));
 const PUBLIC_BASE_URL = 'https://fuoconero-reel-renderer-app-production.up.railway.app';
 
 app.get('/health', (_req,res)=>res.json({ok:true, service:'fuoconero-reel-renderer'}));
@@ -159,7 +159,7 @@ app.post('/render-url', auth, upload.fields([{name:'image',maxCount:1},{name:'au
     const st=await fs.stat(out);
     const videoUrl=await exposeVideo(out,req);
     await Promise.allSettled([fs.unlink(image.path),audio?fs.unlink(audio.path):Promise.resolve()]);
-    res.json({ok:true,rendered:true,video_url:videoUrl,expires_in_seconds:3600,bytes:st.size,width:1080,height:1920,codec:'h264'});
+    res.json({ok:true,rendered:true,video_url:videoUrl,expires_in_seconds:Math.floor(PUBLIC_TTL_MS/1000),bytes:st.size,width:1080,height:1920,codec:'h264'});
   }catch(e){
     await Promise.allSettled([fs.unlink(image.path),audio?fs.unlink(audio.path):Promise.resolve(),fs.unlink(out)]);
     res.status(500).json({ok:false,error:e instanceof Error?e.message:'Errore renderer'});
@@ -312,7 +312,7 @@ app.post('/render-blog-url', auth, upload.fields([
     ]);
     res.json({
       ok:true,rendered:true,template:'FUOCONERO_BLOG_REEL_V1',
-      video_url:videoUrl,expires_in_seconds:3600,bytes:st.size,
+      video_url:videoUrl,expires_in_seconds:Math.floor(PUBLIC_TTL_MS/1000),bytes:st.size,
       width:1080,height:1920,duration,codec:'h264',
       audio:{voice:Boolean(voice),music:Boolean(music),music_source:useDefaultMusic?'builtin':(musicUrl?'youtube':'upload')}
     });
