@@ -231,6 +231,49 @@ app.post('/reel', auth, upload.fields([
   }
 });
 
+async function startupSelftest() {
+  try {
+    const ppm = Buffer.from(
+      'P3\\n2 2\\n255\\n' +
+      '16 16 20  16 16 20\\n' +
+      '16 16 20  16 16 20\\n'
+    );
+
+    const rendered = await render({
+      imageBuffer: ppm,
+      imageName: 'startup-selftest.ppm',
+      imageType: 'image/x-portable-pixmap',
+      audioBuffer: null,
+      title: 'FUOCONERO',
+      subtitle: 'fuoconero.com',
+      duration: 3
+    });
+
+    const videoResponse = await fetch(rendered.video_url, {
+      signal: AbortSignal.timeout(120000)
+    });
+
+    if (!videoResponse.ok) {
+      throw new Error('Public video HTTP ' + videoResponse.status);
+    }
+
+    const bytes = await videoResponse.arrayBuffer();
+    console.log(
+      'AUTOMATION_SELFTEST_OK ' +
+      JSON.stringify({
+        bytes: bytes.byteLength,
+        rendererBytes: rendered.bytes || null,
+        width: rendered.width || 1080,
+        height: rendered.height || 1920,
+        codec: rendered.codec || 'h264'
+      })
+    );
+  } catch (error) {
+    console.error('AUTOMATION_SELFTEST_FAILED ' + detail(error));
+  }
+}
+
 app.listen(PORT, () => {
   console.log('fuoconero automation listening on ' + PORT);
+  startupSelftest();
 });
