@@ -26,14 +26,19 @@ function run(cmd,args){
 }
 function esc(s=''){return s.replace(/\\/g,'\\\\').replace(/:/g,'\\:').replace(/'/g,"\\'").replace(/%/g,'\\%');}
 
-// Minimal FFmpeg smoke test: tiny video first, then we scale up.
+// Temporary full-size FFmpeg validation using Reel-like settings.
 app.get('/selftest', async (_req,res)=>{
   const id=crypto.randomUUID(); const out='/tmp/selftest-'+id+'.mp4';
   try{
-    await run('ffmpeg',['-y','-f','lavfi','-i','color=c=black:s=360x640:r=15','-t','1','-c:v','libx264','-preset','ultrafast','-threads','2','-pix_fmt','yuv420p','-movflags','+faststart',out]);
+    await run('ffmpeg',[
+      '-y','-f','lavfi','-i','color=c=0x101014:s=1080x1920:r=30',
+      '-vf',"drawbox=x=0:y=1450:w=1080:h=470:color=black@0.62:t=fill,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='FUOCONERO':fontcolor=white:fontsize=62:x=(w-text_w)/2:y=1540,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='fuoconero.com':fontcolor=white:fontsize=38:x=(w-text_w)/2:y=1640",
+      '-t','3','-r','30','-c:v','libx264','-preset','veryfast','-threads','2','-crf','23',
+      '-pix_fmt','yuv420p','-movflags','+faststart',out
+    ]);
     const st=await fs.stat(out);
     await fs.unlink(out);
-    res.json({ok:true,rendered:true,width:360,height:640,duration:1,bytes:st.size,codec:'h264',stage:'minimal'});
+    res.json({ok:true,rendered:true,width:1080,height:1920,duration:3,bytes:st.size,codec:'h264',pixelFormat:'yuv420p',preset:'veryfast',threads:2,stage:'full'});
   }catch(e){
     await Promise.allSettled([fs.unlink(out)]);
     res.status(500).json({ok:false,error:e instanceof Error?e.message:'Errore self-test'});
