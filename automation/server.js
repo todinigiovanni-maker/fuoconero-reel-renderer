@@ -564,7 +564,7 @@ async function startupSelftest() {
 }
 
 
-// deploy-sync marker: include publish trigger image\napp.listen(PORT, () => {
+app.listen(PORT, () => {
   console.log('fuoconero automation listening on ' + PORT);
   startupSelftest();
 
