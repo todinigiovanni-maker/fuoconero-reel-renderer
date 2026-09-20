@@ -177,26 +177,26 @@ app.post('/render-blog-url', auth, upload.fields([
   try{
     await fs.mkdir(PUBLIC_DIR,{recursive:true});
     let fc="[0:v]split=2[bg0][fg0];"+
-      "[bg0]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=24:2,eq=brightness=-0.24:saturation=0.75[bg];"+
-      "[fg0]scale=1000:1150:force_original_aspect_ratio=decrease[fg];"+
-      "[bg][fg]overlay=(W-w)/2:250:format=auto,drawbox=x=0:y=0:w=1080:h=1920:color=black@0.16:t=fill[v0];"+
-      "[v0]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='"+category+"':fontcolor=white@0.82:fontsize=34:x=60:y=70:enable='between(t,0,"+duration+")'[v1];"+
-      "[v1]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='"+title+"':fontcolor=white:fontsize=72:line_spacing=10:x=(w-text_w)/2:y=1320:box=1:boxcolor=black@0.62:boxborderw=34:enable='between(t,0,2.8)'[v2];"+
-      "[v2]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='"+subtitle+"':fontcolor=white@0.92:fontsize=35:line_spacing=8:x=(w-text_w)/2:y=1535:box=1:boxcolor=black@0.54:boxborderw=24:enable='between(t,0,2.8)'[v3];"+
-      "[v3]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='"+hook+"':fontcolor=white:fontsize=56:line_spacing=12:x=(w-text_w)/2:y=1370:box=1:boxcolor=black@0.68:boxborderw=34:enable='between(t,2.8,5.6)'[v4];"+
-      "[v4]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='"+keyPoint+"':fontcolor=white:fontsize=58:line_spacing=12:x=(w-text_w)/2:y=1370:box=1:boxcolor=black@0.68:boxborderw=34:enable='between(t,5.6,8.1)'[v5];"+
-      "[v5]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='"+highlight+"':fontcolor=white:fontsize=52:line_spacing=12:x=(w-text_w)/2:y=1345:box=1:boxcolor=black@0.72:boxborderw=34:enable='between(t,8.1,12.2)'[v6];"+
-      "[v6]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='"+close+"':fontcolor=white:fontsize=54:line_spacing=12:x=(w-text_w)/2:y=1360:box=1:boxcolor=black@0.70:boxborderw=34:enable='between(t,12.2,15.5)'[v7];"+
-      "[v7]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='"+cta+"':fontcolor=white:fontsize=50:line_spacing=12:x=(w-text_w)/2:y=1410:box=1:boxcolor=black@0.76:boxborderw=38:enable='between(t,15.5,"+duration+")'[vout]";
+      "[bg0]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=28:2,eq=brightness=-0.28:saturation=0.72[bg];"+
+      "[fg0]scale=1040:1120:force_original_aspect_ratio=decrease[fg];"+
+      "[bg][fg]overlay=(W-w)/2:430:format=auto,drawbox=x=0:y=0:w=1080:h=420:color=black@0.66:t=fill[v0];"+
+      "[v0]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='"+category+"':fontcolor=white@0.78:fontsize=30:x=(w-text_w)/2:y=48:enable='between(t,0,"+duration+")'[v1];"+
+      "[v1]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='"+title+"':fontcolor=white:fontsize=68:line_spacing=10:x=(w-text_w)/2:y=115:shadowx=2:shadowy=2:shadowcolor=black@0.8:enable='between(t,0,1.15)'[v2];"+
+      "[v2]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='"+subtitle+"':fontcolor=white@0.92:fontsize=34:line_spacing=8:x=(w-text_w)/2:y=292:shadowx=2:shadowy=2:shadowcolor=black@0.8:enable='between(t,0,1.15)'[v3];"+
+      "[v3]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='"+hook+"':fontcolor=white:fontsize=54:line_spacing=12:x=(w-text_w)/2:y=145:shadowx=2:shadowy=2:shadowcolor=black@0.85:enable='between(t,1.15,4.35)'[v4];"+
+      "[v4]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='"+keyPoint+"':fontcolor=white:fontsize=56:line_spacing=12:x=(w-text_w)/2:y=145:shadowx=2:shadowy=2:shadowcolor=black@0.85:enable='between(t,4.35,7.15)'[v5];"+
+      "[v5]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='"+highlight+"':fontcolor=white:fontsize=50:line_spacing=12:x=(w-text_w)/2:y=128:shadowx=2:shadowy=2:shadowcolor=black@0.85:enable='between(t,7.15,13.55)'[v6];"+
+      "[v6]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='"+close+"':fontcolor=white:fontsize=52:line_spacing=12:x=(w-text_w)/2:y=145:shadowx=2:shadowy=2:shadowcolor=black@0.85:enable='between(t,13.55,16.55)'[v7];"+
+      "[v7]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='"+cta+"':fontcolor=white:fontsize=50:line_spacing=10:x=(w-text_w)/2:y=145:shadowx=2:shadowy=2:shadowcolor=black@0.9:enable='between(t,16.55,"+duration+")'[vout]";
     const args=['-y','-loop','1','-i',image.path];
     let idx=1,vi=null,mi=null;
     if(voice){vi=idx++;args.push('-i',voice.path);}
     if(music){mi=idx++;args.push('-stream_loop','-1','-i',music.path);}
     let audioMap=null;
     if(vi!==null&&mi!==null){
-      fc+=';['+vi+':a]volume=1.0[va];['+mi+':a]volume=0.12,afade=t=in:st=0:d=0.7,afade=t=out:st='+(duration-1.5)+':d=1.5[ma];[va][ma]amix=inputs=2:duration=longest:dropout_transition=2[aout]';
+      fc+=';['+vi+':a]adelay=1000|1000,volume=1.0[va];['+mi+':a]volume=0.10,afade=t=in:st=0:d=0.7,afade=t=out:st='+(duration-1.5)+':d=1.5[ma];[va][ma]amix=inputs=2:duration=longest:dropout_transition=2[aout]';
       audioMap='[aout]';
-    }else if(vi!==null){fc+=';['+vi+':a]volume=1.0[aout]';audioMap='[aout]';}
+    }else if(vi!==null){fc+=';['+vi+':a]adelay=1000|1000,volume=1.0[aout]';audioMap='[aout]';}
     else if(mi!==null){fc+=';['+mi+':a]volume=0.18,afade=t=in:st=0:d=0.7,afade=t=out:st='+(duration-1.5)+':d=1.5[aout]';audioMap='[aout]';}
     args.push('-filter_complex',fc,'-map','[vout]');
     if(audioMap) args.push('-map',audioMap);
