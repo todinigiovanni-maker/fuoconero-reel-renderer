@@ -110,14 +110,11 @@ function parseHtmlArticle(html,url,slug) {
   const genericCategory=/^(home|home in evidenza|in evidenza|senza categoria)$/i;
   const preferred=[
     /poes/i,
-    /fisica/i,
+    /canzon/i,
     /ani.*male/i,
     /natural/i,
-    /dossier/i,
-    /mondo.*nero/i,
-    /canzon/i,
-    /libr/i,
-    /video/i
+    /fisica/i,
+    /mondo.*nero/i
   ];
   let category='';
   for(const re of preferred){
