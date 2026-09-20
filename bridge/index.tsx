@@ -438,7 +438,7 @@ app.get("/youtube/connect", async (c) => {
   u.searchParams.set("client_id", clientId);
   u.searchParams.set("redirect_uri", redirectUri);
   u.searchParams.set("response_type", "code");
-  u.searchParams.set("scope", "https://www.googleapis.com/auth/youtube.upload");
+  u.searchParams.set("scope", "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly");
   u.searchParams.set("access_type", "offline");
   u.searchParams.set("prompt", "consent");
   u.searchParams.set("state", state);
