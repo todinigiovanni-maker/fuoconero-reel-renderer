@@ -26,6 +26,20 @@ function run(cmd,args){
 }
 function esc(s=''){return s.replace(/\\/g,'\\\\').replace(/:/g,'\\:').replace(/'/g,"\\'").replace(/%/g,'\\%');}
 
+// Temporary end-to-end FFmpeg self-test. Returns metadata only, never publishes anything.
+app.get('/selftest', async (_req,res)=>{
+  const id=crypto.randomUUID(); const out='/tmp/selftest-'+id+'.mp4';
+  try{
+    await run('ffmpeg',['-y','-f','lavfi','-i','color=c=0x101014:s=1080x1920:r=30','-vf',"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='FUOCONERO':fontcolor=white:fontsize=72:x=(w-text_w)/2:y=(h-text_h)/2",'-t','3','-c:v','libx264','-pix_fmt','yuv420p','-movflags','+faststart',out]);
+    const st=await fs.stat(out);
+    await fs.unlink(out);
+    res.json({ok:true,rendered:true,width:1080,height:1920,duration:3,bytes:st.size,codec:'h264',pixelFormat:'yuv420p'});
+  }catch(e){
+    await Promise.allSettled([fs.unlink(out)]);
+    res.status(500).json({ok:false,error:e instanceof Error?e.message:'Errore self-test'});
+  }
+});
+
 // First renderer: image + optional audio -> 1080x1920 H.264/AAC MP4.
 app.post('/render', auth, upload.fields([{name:'image',maxCount:1},{name:'audio',maxCount:1}]), async (req,res)=>{
   const image=req.files?.image?.[0]; const audio=req.files?.audio?.[0];
