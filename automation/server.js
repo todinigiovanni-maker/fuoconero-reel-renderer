@@ -1,8 +1,10 @@
 import express from 'express';
 import multer from 'multer';
 import { promises as fs } from 'node:fs';
+import { parseArticle, buildReelPlan, fetchBuffer } from './blog.js';
 
 const app = express();
+app.use(express.json({ limit: '2mb' }));
 const upload = multer({ dest: '/tmp/uploads', limits: { fileSize: 50 * 1024 * 1024 } });
 
 const PORT = process.env.PORT || 8080;
@@ -15,6 +17,7 @@ const SOCIAL_BRIDGE_URL =
   'https://fuoconero-social-bridge-production.up.railway.app';
 const PUBLISH_PIN = process.env.PUBLISH_PIN || '';
 const AUTOMATION_SECRET = process.env.AUTOMATION_SECRET || '';
+const FUOCONERO_MUSIC_URL = process.env.FUOCONERO_MUSIC_URL || '';
 
 function detail(error) {
   return error instanceof Error
@@ -70,8 +73,191 @@ async function render({ imageBuffer, imageName, imageType, audioBuffer, audioNam
   return payload;
 }
 
+
+async function renderBlog({ article, plan, voiceUrl, musicUrl, duration = 17 }) {
+  if (!RENDERER_SECRET) throw new Error('RENDERER_SECRET mancante');
+  if (!article.image) throw new Error('Immagine in evidenza mancante');
+
+  const image = await fetchBuffer(article.image);
+  const voice = voiceUrl ? await fetchBuffer(voiceUrl) : null;
+  const music = musicUrl ? await fetchBuffer(musicUrl) : null;
+
+  const form = new FormData();
+  form.append('image', new File([image.buffer], image.name, { type: image.type }));
+  if (voice) form.append('voice', new File([voice.buffer], voice.name, { type: voice.type }));
+  if (music) form.append('music', new File([music.buffer], music.name, { type: music.type }));
+
+  const fields = {
+    category: plan.category,
+    title: plan.title,
+    subtitle: plan.subtitle,
+    hook: plan.hook,
+    keyPoint: plan.keyPoint,
+    highlight: plan.highlight,
+    close: plan.close,
+    cta: plan.cta,
+    duration: String(duration)
+  };
+  for (const [key, value] of Object.entries(fields)) form.append(key, String(value || ''));
+
+  const response = await fetch(RENDERER_URL + '/render-blog-url', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + RENDERER_SECRET },
+    body: form,
+    signal: AbortSignal.timeout(220000)
+  });
+  const payload = await response.json();
+  if (!response.ok || !payload?.ok || !payload?.video_url) {
+    throw new Error('Blog renderer HTTP ' + response.status + ': ' + JSON.stringify(payload).slice(-2200));
+  }
+  return payload;
+}
+
+async function publishRendered({ videoUrl, caption, platform = 'none', youtube = false, youtubeTitle = 'FUOCONERO', youtubeDescription = '', youtubeTags = '' }) {
+  if (!PUBLISH_PIN) throw new Error('PUBLISH_PIN non configurato');
+  const results = {};
+
+  if (['instagram', 'facebook', 'both'].includes(platform)) {
+    const meta = await fetch(SOCIAL_BRIDGE_URL + '/publish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        videoUrl,
+        caption,
+        shareToFeed: true,
+        platform,
+        confirmed: true,
+        pin: PUBLISH_PIN
+      }),
+      signal: AbortSignal.timeout(180000)
+    });
+    results.meta = { status: meta.status, body: await meta.json() };
+  }
+
+  if (youtube) {
+    const yt = await fetch(SOCIAL_BRIDGE_URL + '/youtube/short', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Publish-Pin': PUBLISH_PIN },
+      body: JSON.stringify({
+        video_url: videoUrl,
+        title: String(youtubeTitle).slice(0, 100),
+        description: youtubeDescription || caption,
+        tags: youtubeTags
+      }),
+      signal: AbortSignal.timeout(300000)
+    });
+    results.youtube = { status: yt.status, body: await yt.json() };
+  }
+
+  return results;
+}
+
+
+app.get('/blog/preview', async (req, res) => {
+  try {
+    const url = String(req.query.url || '');
+    if (!url) return res.status(400).json({ ok: false, error: 'Parametro url mancante' });
+
+    const article = await parseArticle(url);
+    const reel = buildReelPlan(article);
+
+    return res.json({
+      ok: true,
+      article: {
+        id: article.id,
+        url: article.url,
+        date: article.date,
+        title: article.title,
+        category: article.category,
+        categories: article.categories,
+        image: article.image,
+        image_alt: article.image_alt,
+        excerpt: article.excerpt
+      },
+      reel,
+      published: false,
+      version: '1.1.0'
+    });
+  } catch (error) {
+    return res.status(502).json({
+      ok: false,
+      stage: 'blog-preview',
+      error: 'Impossibile leggere l’articolo',
+      detail: detail(error)
+    });
+  }
+});
+
+app.post('/blog-reel', auth, async (req, res) => {
+  try {
+    const url = String(req.body?.url || '');
+    if (!url) return res.status(400).json({ ok: false, error: 'url mancante' });
+
+    const article = await parseArticle(url);
+    const plan = buildReelPlan(article, req.body?.reel || {});
+    const rendered = await renderBlog({
+      article,
+      plan,
+      voiceUrl: String(req.body?.voice_url || ''),
+      musicUrl: String(req.body?.music_url || FUOCONERO_MUSIC_URL || ''),
+      duration: Math.min(Math.max(Number(req.body?.duration) || 17, 10), 30)
+    });
+
+    const publish = req.body?.publish === true;
+    if (!publish) {
+      return res.json({
+        ok: true,
+        source_url: article.url,
+        article: { title: article.title, category: article.category, image: article.image },
+        reel: plan,
+        video_url: rendered.video_url,
+        expires_in_seconds: rendered.expires_in_seconds || 3600,
+        audio: rendered.audio || {},
+        published: false
+      });
+    }
+
+    if (req.body?.confirmed !== true) {
+      return res.status(400).json({
+        ok: false,
+        rendered: true,
+        video_url: rendered.video_url,
+        error: 'Pubblicazione non confermata'
+      });
+    }
+
+    const platform = String(req.body?.platform || 'none').toLowerCase();
+    const youtube = req.body?.youtube === true;
+    const results = await publishRendered({
+      videoUrl: rendered.video_url,
+      caption: plan.caption,
+      platform,
+      youtube,
+      youtubeTitle: plan.title,
+      youtubeDescription: plan.caption,
+      youtubeTags: plan.hashtags.join(',')
+    });
+
+    return res.json({
+      ok: true,
+      source_url: article.url,
+      reel: plan,
+      video_url: rendered.video_url,
+      published: true,
+      results
+    });
+  } catch (error) {
+    return res.status(502).json({
+      ok: false,
+      stage: 'blog-reel',
+      error: 'Blog reel automation failed',
+      detail: detail(error)
+    });
+  }
+});
+
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, service: 'fuoconero-automation', version: '1.0.1' });
+  res.json({ ok: true, service: 'fuoconero-automation', version: '1.1.0' });
 });
 
 app.get('/selftest', async (_req, res) => {
