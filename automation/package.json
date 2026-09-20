@@ -1,7 +1,7 @@
 {
   "type": "module",
   "scripts": {
-    "start": "node publish-once.js && node server.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "express": "^5.1.0",
