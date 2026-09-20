@@ -30,10 +30,10 @@ function esc(s=''){return s.replace(/\\/g,'\\\\').replace(/:/g,'\\:').replace(/'
 app.get('/selftest', async (_req,res)=>{
   const id=crypto.randomUUID(); const out='/tmp/selftest-'+id+'.mp4';
   try{
-    await run('ffmpeg',['-y','-f','lavfi','-i','color=c=0x101014:s=1080x1920:r=30','-vf',"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='FUOCONERO':fontcolor=white:fontsize=72:x=(w-text_w)/2:y=(h-text_h)/2",'-t','3','-c:v','libx264','-pix_fmt','yuv420p','-movflags','+faststart',out]);
+    await run('ffmpeg',['-y','-f','lavfi','-i','color=c=0x101014:s=1080x1920:r=30','-vf',"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='FUOCONERO':fontcolor=white:fontsize=72:x=(w-text_w)/2:y=(h-text_h)/2",'-t','1','-c:v','libx264','-preset','ultrafast','-crf','28','-pix_fmt','yuv420p','-movflags','+faststart',out]);
     const st=await fs.stat(out);
     await fs.unlink(out);
-    res.json({ok:true,rendered:true,width:1080,height:1920,duration:3,bytes:st.size,codec:'h264',pixelFormat:'yuv420p'});
+    res.json({ok:true,rendered:true,width:1080,height:1920,duration:1,bytes:st.size,codec:'h264',pixelFormat:'yuv420p'});
   }catch(e){
     await Promise.allSettled([fs.unlink(out)]);
     res.status(500).json({ok:false,error:e instanceof Error?e.message:'Errore self-test'});
@@ -52,7 +52,7 @@ app.post('/render', auth, upload.fields([{name:'image',maxCount:1},{name:'audio'
     const vf=`scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,drawbox=x=0:y=1450:w=1080:h=470:color=black@0.62:t=fill,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='${esc(title)}':fontcolor=white:fontsize=62:x=(w-text_w)/2:y=1540,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='${esc(subtitle)}':fontcolor=white:fontsize=38:x=(w-text_w)/2:y=1640`;
     const args=['-y','-loop','1','-i',image.path];
     if(audio) args.push('-i',audio.path);
-    args.push('-vf',vf,'-t',String(duration),'-r','30','-c:v','libx264','-pix_fmt','yuv420p');
+    args.push('-vf',vf,'-t',String(duration),'-r','30','-c:v','libx264','-preset','veryfast','-crf','23','-pix_fmt','yuv420p');
     if(audio) args.push('-c:a','aac','-b:a','192k','-shortest'); else args.push('-an');
     args.push('-movflags','+faststart',out);
     await run('ffmpeg',args);
