@@ -56,10 +56,15 @@ async function render({ imageBuffer, imageName, imageType, audioBuffer, audioNam
 
   const payload = await response.json();
   if (!response.ok || !payload?.ok || !payload?.video_url) {
-    const rendererError =
+    const rendererErrorRaw =
       typeof payload?.error === 'string'
-        ? payload.error.slice(-1800)
-        : JSON.stringify(payload).slice(-1800);
+        ? payload.error.slice(-2500)
+        : JSON.stringify(payload).slice(-2500);
+    const rendererError = rendererErrorRaw
+      .replace(/\r/g, ' ')
+      .replace(/\n/g, ' | ')
+      .replace(/\s+/g, ' ')
+      .slice(-1800);
     throw new Error('Renderer HTTP ' + response.status + ': ' + rendererError);
   }
   return payload;
