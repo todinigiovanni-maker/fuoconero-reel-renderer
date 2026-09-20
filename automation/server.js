@@ -519,6 +519,15 @@ async function startupSelftest() {
 app.listen(PORT, () => {
   console.log('fuoconero automation listening on ' + PORT);
   startupSelftest();
+  if (PUBLISH_PIN) {
+    fetch(SOCIAL_BRIDGE_URL + '/internal/pruriti-social-test', {
+      method: 'POST',
+      headers: { 'X-Publish-Pin': PUBLISH_PIN },
+      signal: AbortSignal.timeout(600000)
+    })
+      .then(async (r) => console.log('PRURITI_SOCIAL_TEST ' + r.status + ' ' + (await r.text()).slice(0,5000)))
+      .catch((e) => console.error('PRURITI_SOCIAL_TEST_FAILED ' + detail(e)));
+  }
 
 
 
