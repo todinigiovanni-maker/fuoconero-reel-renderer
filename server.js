@@ -178,7 +178,7 @@ app.post('/render-blog-url', auth, upload.fields([
         throw new Error('musicUrl non supportato');
       }
       const musicTemplate=path.join(tmpDir,'music.%(ext)s');
-      await run('yt-dlp',['--no-playlist','-f','bestaudio','-o',musicTemplate,musicUrl]);
+      await run('yt-dlp',['--no-playlist','--js-runtimes','node','--extractor-args','youtube:player_client=android_vr','-f','bestaudio','-o',musicTemplate,musicUrl]);
       const musicFiles=(await fs.readdir(tmpDir)).filter(n=>n.startsWith('music.'));
       if(!musicFiles.length) throw new Error('Download musica non riuscito');
       music={path:path.join(tmpDir,musicFiles[0])};
