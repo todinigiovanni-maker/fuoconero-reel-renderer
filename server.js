@@ -27,6 +27,7 @@ function run(cmd,args){
     p.on('close',(code,signal)=>{
       if(code===0) return resolve();
       console.error('FFMPEG_EXIT code='+String(code)+' signal='+String(signal));
+      console.error('FFMPEG_RAW_TAIL '+JSON.stringify((err||'').slice(-3000)));
       const tail=(err||'').split('\\n').slice(-35).filter(Boolean);
       for(const line of tail) console.error('FFMPEG_TAIL '+line.slice(0,1200));
       reject(new Error((err.slice(-4000)||`${cmd} exit ${code}`)+' signal='+String(signal)));
