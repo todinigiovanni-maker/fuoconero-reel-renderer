@@ -13,7 +13,9 @@ const REDIRECT_URI=process.env.TIKTOK_REDIRECT_URI||'';
 const BRIDGE_SECRET=process.env.BRIDGE_SECRET||'';
 const PUBLISH_PIN=process.env.PUBLISH_PIN||'';
 const TOKEN_FILE=process.env.TIKTOK_TOKEN_FILE||'/data/tiktok-oauth.json';
-const DEMO_VIDEO_URL=process.env.TIKTOK_DEMO_VIDEO_URL||'https://fuoconero-reel-renderer-app-production.up.railway.app/media/63a0e242-f8cb-4d55-8c5e-ac2da4a3e62b.mp4';
+const RENDERER_URL=process.env.RENDERER_URL||'https://fuoconero-reel-renderer-app-production.up.railway.app';
+const RENDERER_SECRET=process.env.RENDERER_SECRET||'';
+let demoVideoCache={url:'',expiresAt:0};
 
 function b64url(buf){
   return Buffer.from(buf).toString('base64url');
@@ -143,6 +145,26 @@ function verifyDemoSession(value=''){
     return Number.isFinite(body.ts)&&Date.now()-body.ts>=0&&Date.now()-body.ts<=2*60*60*1000;
   }catch{return false;}
 }
+async function ensureDemoVideo(){
+  if(demoVideoCache.url && Date.now()<demoVideoCache.expiresAt-5*60*1000) return demoVideoCache.url;
+  if(!RENDERER_SECRET) throw new Error('RENDERER_SECRET non configurato per la demo');
+  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAFElEQVR4nGMUEBBhgAEmBiSAmwMACygAPDOMYd8AAAAASUVORK5CYII=','base64');
+  const form=new FormData();
+  form.append('image',new File([png],'fuoconero-demo.png',{type:'image/png'}));
+  form.append('title','FUOCONERO SOCIAL');
+  form.append('subtitle','TikTok Content Posting API · fuoconero.com');
+  form.append('duration','6');
+  const r=await fetch(RENDERER_URL+'/render-url',{
+    method:'POST',
+    headers:{Authorization:'Bearer '+RENDERER_SECRET},
+    body:form,
+    signal:AbortSignal.timeout(180000)
+  });
+  const data=await r.json();
+  if(!r.ok||!data?.ok||!data?.video_url) throw new Error('Demo renderer HTTP '+r.status+': '+JSON.stringify(data).slice(-1200));
+  demoVideoCache={url:data.video_url,expiresAt:Date.now()+45*60*1000};
+  return demoVideoCache.url;
+}
 function demoAuthorized(req){
   return verifyDemoSession(cookieValue(req,'fuoconero_demo'));
 }
@@ -201,6 +223,8 @@ app.get('/demo',async(req,res)=>{
   const connected=demoAuthorized(req);
   let creator={};
   if(connected) creator=await demoCreator();
+  let demoVideoUrl='';
+  try{ demoVideoUrl=await ensureDemoVideo(); }catch(e){ console.error('DEMO_VIDEO_ERROR '+(e instanceof Error?e.message:String(e))); }
   const privacy=Array.isArray(creator.privacy_level_options)?creator.privacy_level_options:[];
   const body=`
     <div class="brand"><div class="mark">★</div><div><h1>Fuoconero Social</h1><p>Crea, rivedi e pubblica i reel Fuoconero con conferma esplicita.</p></div></div>
@@ -218,7 +242,9 @@ app.get('/demo',async(req,res)=>{
       <div class="step">2 · Rivedi il contenuto</div>
       <h2>Anteprima reel</h2>
       <p class="muted">Il contenuto viene mostrato prima dell'invio. Nessuna pubblicazione parte senza conferma.</p>
-      <video controls playsinline preload="metadata" src="${escapeHtml(DEMO_VIDEO_URL)}"></video>
+      ${demoVideoUrl
+        ? '<video controls playsinline preload="metadata" src="'+escapeHtml(demoVideoUrl)+'"></video>'
+        : '<div class="status">Anteprima video temporaneamente non disponibile.</div>'}
       <label for="caption"><p><strong>Caption TikTok</strong></p></label>
       <textarea id="caption">FUOCONERO — test integrazione privata #fuoconero</textarea>
     </section>
@@ -280,7 +306,7 @@ app.post('/demo/post',demoAuth,async(req,res)=>{
   try{
     if(req.body?.confirmed!==true) return res.status(400).json({ok:false,error:'Pubblicazione non confermata'});
     const title=String(req.body?.title||'FUOCONERO').slice(0,2200);
-    const videoUrl=DEMO_VIDEO_URL;
+    const videoUrl=await ensureDemoVideo();
     const {access_token}=await getAccessToken();
     const creator=(await tiktokJson('/v2/post/publish/creator_info/query/',access_token,{})).data||{};
     const options=Array.isArray(creator.privacy_level_options)?creator.privacy_level_options:[];
