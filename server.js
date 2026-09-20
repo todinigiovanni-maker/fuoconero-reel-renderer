@@ -227,23 +227,23 @@ app.post('/render-blog-url', auth, upload.fields([
       (bold?"DejaVuSans-Bold.ttf":"DejaVuSans.ttf")+
       ":textfile='"+file+
       "':reload=0:fontcolor=white:fontsize="+size+
-      ":line_spacing=8:x=(w-text_w)/2:y="+y+
+      ":line_spacing=6:x=(w-text_w)/2:y="+y+
       ":fix_bounds=1:shadowx=1:shadowy=1:shadowcolor=black@0.9:enable='between(t,"+start+","+end+")'";
 
     let fc="[0:v]split=2[bg0][fg0];"+
-      "[bg0]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,eq=brightness=-0.38:saturation=0.58[bg];"+
-      "[fg0]scale=653:740:force_original_aspect_ratio=decrease[fg];"+
-      "[bg][fg]overlay=(W-w)/2:323:format=auto,"+
-      "drawbox=x=28:y=28:w=664:h=243:color=black@0.72:t=fill,"+
-      "drawbox=x=28:y=1067:w=664:h=147:color=black@0.50:t=fill[v0];"+
-      "[v0]"+d(files.category,19,41,0,duration,true)+"[v1];"+
-      "[v1]"+d(files.title,41,79,0,1.15,true)+"[v2];"+
-      "[v2]"+d(files.subtitle,21,180,0,1.15,false)+"[v3];"+
-      "[v3]"+d(files.hook,32,83,1.15,4.35,true)+"[v4];"+
-      "[v4]"+d(files.keyPoint,33,83,4.35,7.15,true)+"[v5];"+
-      "[v5]"+d(files.highlight,31,72,7.15,13.55,true)+"[v6];"+
-      "[v6]"+d(files.close,32,83,13.55,16.45,true)+"[v7];"+
-      "[v7]"+d(files.cta,31,77,16.45,duration,true)+"[vout]";
+      "[bg0]scale=540:960:force_original_aspect_ratio=increase,crop=540:960,eq=brightness=-0.38:saturation=0.58[bg];"+
+      "[fg0]scale=490:555:force_original_aspect_ratio=decrease[fg];"+
+      "[bg][fg]overlay=(W-w)/2:242:format=auto,"+
+      "drawbox=x=21:y=21:w=498:h=182:color=black@0.72:t=fill,"+
+      "drawbox=x=21:y=800:w=498:h=110:color=black@0.50:t=fill[v0];"+
+      "[v0]"+d(files.category,14,31,0,duration,true)+"[v1];"+
+      "[v1]"+d(files.title,31,59,0,1.15,true)+"[v2];"+
+      "[v2]"+d(files.subtitle,16,135,0,1.15,false)+"[v3];"+
+      "[v3]"+d(files.hook,24,62,1.15,4.35,true)+"[v4];"+
+      "[v4]"+d(files.keyPoint,25,62,4.35,7.15,true)+"[v5];"+
+      "[v5]"+d(files.highlight,23,54,7.15,13.55,true)+"[v6];"+
+      "[v6]"+d(files.close,24,62,13.55,16.45,true)+"[v7];"+
+      "[v7]"+d(files.cta,23,58,16.45,duration,true)+"[vout]";
 
     const args=['-y','-loop','1','-i',image.path];
     let idx=1,vi=null,mi=null;
@@ -264,13 +264,13 @@ app.post('/render-blog-url', auth, upload.fields([
 
     args.push('-filter_threads','1','-filter_complex_threads','1','-filter_complex',fc,'-map','[vout]');
     if(audioMap) args.push('-map',audioMap);
-    args.push('-t',String(duration),'-r','30','-c:v','libx264','-preset','veryfast','-threads','1','-crf','22','-pix_fmt','yuv420p');
-    if(audioMap) args.push('-c:a','aac','-b:a','128k'); else args.push('-an');
+    args.push('-t',String(duration),'-r','30','-c:v','libx264','-preset','ultrafast','-threads','1','-crf','20','-pix_fmt','yuv420p');
+    if(audioMap) args.push('-c:a','aac','-b:a','96k'); else args.push('-an');
     args.push('-movflags','+faststart',pass1);
 
     await run('ffmpeg',args);
 
-    const up=['-y','-i',pass1,'-vf','scale=1080:1920:flags=lanczos','-c:v','libx264','-preset','veryfast','-threads','1','-crf','23','-pix_fmt','yuv420p'];
+    const up=['-y','-i',pass1,'-vf','scale=1080:1920:flags=lanczos','-c:v','libx264','-preset','ultrafast','-threads','1','-crf','22','-pix_fmt','yuv420p'];
     if(audioMap) up.push('-c:a','copy'); else up.push('-an');
     up.push('-movflags','+faststart',out);
     await run('ffmpeg',up);
