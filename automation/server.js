@@ -309,6 +309,53 @@ app.post('/blog-reel', auth, async (req, res) => {
 });
 
 
+
+app.get('/preview-pipistrello-reel-6f2c', async (_req, res) => {
+  try {
+    const article = await parseArticle('https://fuoconero.com/2026/09/19/pipistrello-longevita-cellula-morire/');
+    const base = buildReelPlan(article);
+    const plan = {
+      ...base,
+      category: 'ANI…MALE',
+      title: 'IL PIPISTRELLO CHE SA QUANDO UNA CELLULA DEVE MORIRE',
+      subtitle: 'Vivere più a lungo può significare eliminare prima le cellule danneggiate.',
+      hook: 'Alcuni pipistrelli vivono decenni. Il segreto potrebbe essere sapere quando non conviene più riparare.',
+      keyPoint: 'Nel Myotis lucifugus, danni gravi al DNA aumentano rapidamente l’apoptosi: l’autodistruzione programmata della cellula.',
+      highlight: 'Se una cellula è troppo danneggiata, eliminarla può essere più sicuro che lasciarla continuare a dividersi.',
+      close: 'Non è immortalità. È controllo del danno.',
+      cta: 'Leggi l’articolo completo su fuoconero.com',
+      caption: 'Alcuni pipistrelli vivono decenni nonostante le piccole dimensioni. Uno studio su Nature suggerisce che una parte del segreto possa essere la capacità di eliminare rapidamente cellule gravemente danneggiate. Non è immortalità: è controllo del danno. 🦇🔥 Approfondimento su fuoconero.com #Fuoconero #Animale #Pipistrelli #Longevità #Biologia #Scienza'
+    };
+    const rendered = await renderBlog({ article, plan, voiceUrl: '', musicUrl: FUOCONERO_MUSIC_URL, duration: 13 });
+    return res.json({ ok:true, kind:'reel', article:{title:article.title,url:article.url}, reel:plan, video_url:rendered.video_url, expires_in_seconds:rendered.expires_in_seconds || 86400, audio:rendered.audio || {}, published:false });
+  } catch (error) {
+    return res.status(502).json({ ok:false, stage:'preview-pipistrello-reel', error:'Render failed', detail:detail(error) });
+  }
+});
+
+app.get('/preview-pipistrello-short-6f2c', async (_req, res) => {
+  try {
+    const article = await parseArticle('https://fuoconero.com/2026/09/19/pipistrello-longevita-cellula-morire/');
+    const base = buildReelPlan(article);
+    const plan = {
+      ...base,
+      category: 'ANI…MALE',
+      title: 'QUESTO PIPISTRELLO VIVE DECENNI',
+      subtitle: 'E una delle ragioni potrebbe essere sorprendente.',
+      hook: 'Quando il DNA è troppo danneggiato, le sue cellule non insistono sempre a ripararsi.',
+      keyPoint: 'Nel Myotis lucifugus aumenta l’apoptosi: la cellula sceglie di autodistruggersi prima di diventare un rischio.',
+      highlight: 'In pratica: meglio perdere una cellula che lasciarla accumulare mutazioni.',
+      close: 'Non è il gene dell’immortalità. È una strategia di controllo del danno.',
+      cta: 'Articolo completo su fuoconero.com',
+      caption: 'Perché alcuni pipistrelli vivono così a lungo? 🦇 Un nuovo studio su Nature collega longevità, risposta ai virus e capacità di eliminare rapidamente cellule gravemente danneggiate. Non abbiamo trovato il gene dell’immortalità, ma una strategia biologica sorprendente: se una cellula è troppo compromessa, eliminarla può essere più sicuro che salvarla. 🔥 #Fuoconero #Pipistrelli #Longevità #Biologia #Scienza #Shorts'
+    };
+    const rendered = await renderBlog({ article, plan, voiceUrl: '', musicUrl: FUOCONERO_MUSIC_URL, duration: 24 });
+    return res.json({ ok:true, kind:'youtube-short', article:{title:article.title,url:article.url}, reel:plan, youtube:{title:'Il pipistrello che sa quando una cellula deve morire',description:plan.caption,tags:['Fuoconero','Pipistrelli','Longevità','Biologia','Scienza','Shorts']}, video_url:rendered.video_url, expires_in_seconds:rendered.expires_in_seconds || 86400, audio:rendered.audio || {}, published:false });
+  } catch (error) {
+    return res.status(502).json({ ok:false, stage:'preview-pipistrello-short', error:'Render failed', detail:detail(error) });
+  }
+});
+
 app.get('/health', (_req, res) => {
   res.json({ ok: true, service: 'fuoconero-automation', version: '1.1.0' });
 });
