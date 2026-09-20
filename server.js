@@ -263,7 +263,29 @@ app.post('/render-blog-url', auth, upload.fields([
       audioMap='[aout]';
     }
 
-    args.push('-filter_threads','1','-filter_complex_threads','1','-filter_complex',fc,'-map','[vout]');
+    const imgHead=Buffer.alloc(16);
+    const imgFd=await fs.open(image.path,'r');
+    await imgFd.read(imgHead,0,16,0);
+    await imgFd.close();
+    let musicInfo=null;
+    if(music){
+      const ms=await fs.stat(music.path);
+      const mh=Buffer.alloc(16);
+      const mfd=await fs.open(music.path,'r');
+      await mfd.read(mh,0,16,0);
+      await mfd.close();
+      musicInfo={size:ms.size,head:mh.toString('hex')};
+    }
+    console.log('BLOG_INPUT '+JSON.stringify({
+      imageSize:image.size||null,
+      imageMime:image.mimetype||null,
+      imageName:image.originalname||null,
+      imageHead:imgHead.toString('hex'),
+      music:musicInfo,
+      filterLength:fc.length
+    }));
+
+        args.push('-filter_threads','1','-filter_complex_threads','1','-filter_complex',fc,'-map','[vout]');
     if(audioMap) args.push('-map',audioMap);
     args.push('-t',String(duration),'-r','30','-c:v','libx264','-preset','ultrafast','-threads','1','-crf','20','-pix_fmt','yuv420p');
     if(audioMap) args.push('-c:a','aac','-b:a','96k'); else args.push('-an');
