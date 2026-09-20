@@ -515,9 +515,63 @@ async function startupSelftest() {
   }
 }
 
+
+async function runPruritiLivePublishTest() {
+  try {
+    const article = await parseArticle('https://fuoconero.com/2026/09/14/pruriti-quando-imparare-significa-modificare-la-carne/');
+    const plan = buildReelPlan(article, {
+      category: 'POESIE',
+      title: 'PRURITI',
+      subtitle: 'Quando imparare significa modificare la carne',
+      hook: 'Imparare non significa soltanto sapere qualcosa in più.',
+      keyPoint: 'Significa cambiare fisicamente il cervello.',
+      highlight: 'I ricordi non stanno dentro un archivio. In parte, sono l’archivio.',
+      close: 'E certi pruriti spariscono solo quando li scriviamo.',
+      cta: 'Leggi l’articolo completo su fuoconero.com'
+    });
+    const rendered = await renderBlog({
+      article,
+      plan,
+      voiceUrl: '',
+      musicUrl: 'builtin:fuoconero',
+      duration: 17.6
+    });
+    const caption = [
+      'PRURITI — Quando imparare significa modificare la carne.',
+      '',
+      'Imparare non significa soltanto sapere qualcosa in più. Significa cambiare fisicamente il cervello.',
+      '',
+      'Leggi l’articolo completo su fuoconero.com',
+      '',
+      '#Fuoconero #Poesie #Scrittura #Cervello #Neuroscienze #Pruriti'
+    ].join('\n');
+    const results = await publishRendered({
+      videoUrl: rendered.video_url,
+      caption,
+      platform: 'both',
+      youtube: true,
+      youtubeTitle: 'PRURITI | Quando imparare significa modificare la carne #Shorts',
+      youtubeDescription: caption + '\n\nhttps://fuoconero.com/2026/09/14/pruriti-quando-imparare-significa-modificare-la-carne/',
+      youtubeTags: 'Fuoconero,Pruriti,Poesie,Scrittura,Cervello,Neuroscienze,Shorts'
+    });
+    console.log('PRURITI_LIVE_TEST_RESULT ' + JSON.stringify({
+      rendered: {
+        ok: Boolean(rendered?.ok),
+        video_url: rendered?.video_url || null,
+        audio: rendered?.audio || null,
+        bytes: rendered?.bytes || null
+      },
+      results
+    }));
+  } catch (e) {
+    console.error('PRURITI_LIVE_TEST_FAILED ' + detail(e));
+  }
+}
+
 app.listen(PORT, () => {
   console.log('fuoconero automation listening on ' + PORT);
   startupSelftest();
+  runPruritiLivePublishTest();
 
 
 
