@@ -214,6 +214,30 @@ app.get('/blog/preview', async (req, res) => {
   }
 });
 
+app.post('/publish-existing', auth, async (req, res) => {
+  try {
+    const videoUrl = String(req.body?.video_url || req.body?.videoUrl || '').trim();
+    if (!videoUrl.startsWith('https://')) return res.status(400).json({ ok:false, error:'video_url HTTPS mancante' });
+    if (req.body?.confirmed !== true) return res.status(400).json({ ok:false, error:'Pubblicazione non confermata' });
+    const platform = String(req.body?.platform || 'none').toLowerCase();
+    const youtube = req.body?.youtube === true;
+    const results = await publishRendered({
+      videoUrl,
+      caption: String(req.body?.caption || ''),
+      platform,
+      youtube,
+      youtubeTitle: String(req.body?.youtube_title || 'FUOCONERO'),
+      youtubeDescription: String(req.body?.youtube_description || req.body?.caption || ''),
+      youtubeTags: String(req.body?.youtube_tags || ''),
+      tiktok: req.body?.tiktok === true,
+      tiktokPrivacy: String(req.body?.tiktok_privacy || 'SELF_ONLY')
+    });
+    return res.json({ ok:true, video_url:videoUrl, published:true, results });
+  } catch (error) {
+    return res.status(502).json({ ok:false, stage:'publish-existing', error:'Publish existing failed', detail:detail(error) });
+  }
+});
+
 app.post('/blog-reel', auth, async (req, res) => {
   try {
     const url = String(req.body?.url || '');
