@@ -174,6 +174,7 @@ app.post('/render-blog-url', auth, upload.fields([
   const duration=Math.min(Math.max(Number(req.body.duration)||17.6,10),30);
   const id=crypto.randomUUID(), out=path.join(PUBLIC_DIR,id+'.mp4');
   const tmpDir=path.join('/tmp','blog-'+id);
+  const pass1=path.join(tmpDir,'pass1.mp4');
   try{
     await fs.mkdir(PUBLIC_DIR,{recursive:true});
     await fs.mkdir(tmpDir,{recursive:true});
@@ -226,23 +227,23 @@ app.post('/render-blog-url', auth, upload.fields([
       (bold?"DejaVuSans-Bold.ttf":"DejaVuSans.ttf")+
       ":textfile='"+file+
       "':reload=0:fontcolor=white:fontsize="+size+
-      ":line_spacing=12:x=(w-text_w)/2:y="+y+
-      ":fix_bounds=1:shadowx=2:shadowy=2:shadowcolor=black@0.9:enable='between(t,"+start+","+end+")'";
+      ":line_spacing=8:x=(w-text_w)/2:y="+y+
+      ":fix_bounds=1:shadowx=1:shadowy=1:shadowcolor=black@0.9:enable='between(t,"+start+","+end+")'";
 
     let fc="[0:v]split=2[bg0][fg0];"+
-      "[bg0]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,eq=brightness=-0.38:saturation=0.58[bg];"+
-      "[fg0]scale=980:1110:force_original_aspect_ratio=decrease[fg];"+
-      "[bg][fg]overlay=(W-w)/2:485:format=auto,"+
-      "drawbox=x=42:y=42:w=996:h=365:color=black@0.72:t=fill,"+
-      "drawbox=x=42:y=1600:w=996:h=220:color=black@0.50:t=fill[v0];"+
-      "[v0]"+d(files.category,28,62,0,duration,true)+"[v1];"+
-      "[v1]"+d(files.title,62,118,0,1.15,true)+"[v2];"+
-      "[v2]"+d(files.subtitle,32,270,0,1.15,false)+"[v3];"+
-      "[v3]"+d(files.hook,48,125,1.15,4.35,true)+"[v4];"+
-      "[v4]"+d(files.keyPoint,50,125,4.35,7.15,true)+"[v5];"+
-      "[v5]"+d(files.highlight,46,108,7.15,13.55,true)+"[v6];"+
-      "[v6]"+d(files.close,48,125,13.55,16.45,true)+"[v7];"+
-      "[v7]"+d(files.cta,46,115,16.45,duration,true)+"[vout]";
+      "[bg0]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,eq=brightness=-0.38:saturation=0.58[bg];"+
+      "[fg0]scale=653:740:force_original_aspect_ratio=decrease[fg];"+
+      "[bg][fg]overlay=(W-w)/2:323:format=auto,"+
+      "drawbox=x=28:y=28:w=664:h=243:color=black@0.72:t=fill,"+
+      "drawbox=x=28:y=1067:w=664:h=147:color=black@0.50:t=fill[v0];"+
+      "[v0]"+d(files.category,19,41,0,duration,true)+"[v1];"+
+      "[v1]"+d(files.title,41,79,0,1.15,true)+"[v2];"+
+      "[v2]"+d(files.subtitle,21,180,0,1.15,false)+"[v3];"+
+      "[v3]"+d(files.hook,32,83,1.15,4.35,true)+"[v4];"+
+      "[v4]"+d(files.keyPoint,33,83,4.35,7.15,true)+"[v5];"+
+      "[v5]"+d(files.highlight,31,72,7.15,13.55,true)+"[v6];"+
+      "[v6]"+d(files.close,32,83,13.55,16.45,true)+"[v7];"+
+      "[v7]"+d(files.cta,31,77,16.45,duration,true)+"[vout]";
 
     const args=['-y','-loop','1','-i',image.path];
     let idx=1,vi=null,mi=null;
@@ -263,11 +264,17 @@ app.post('/render-blog-url', auth, upload.fields([
 
     args.push('-filter_threads','1','-filter_complex_threads','1','-filter_complex',fc,'-map','[vout]');
     if(audioMap) args.push('-map',audioMap);
-    args.push('-t',String(duration),'-r','30','-c:v','libx264','-preset','veryfast','-threads','2','-crf','23','-pix_fmt','yuv420p');
-    if(audioMap) args.push('-c:a','aac','-b:a','192k'); else args.push('-an');
-    args.push('-movflags','+faststart',out);
+    args.push('-t',String(duration),'-r','30','-c:v','libx264','-preset','veryfast','-threads','1','-crf','22','-pix_fmt','yuv420p');
+    if(audioMap) args.push('-c:a','aac','-b:a','128k'); else args.push('-an');
+    args.push('-movflags','+faststart',pass1);
 
     await run('ffmpeg',args);
+
+    const up=['-y','-i',pass1,'-vf','scale=1080:1920:flags=lanczos','-c:v','libx264','-preset','veryfast','-threads','1','-crf','23','-pix_fmt','yuv420p'];
+    if(audioMap) up.push('-c:a','copy'); else up.push('-an');
+    up.push('-movflags','+faststart',out);
+    await run('ffmpeg',up);
+
     const st=await fs.stat(out), videoUrl=await exposeVideo(out,req);
     await Promise.allSettled([
       fs.unlink(image.path),
