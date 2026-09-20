@@ -513,9 +513,12 @@ async function startupSelftest() {
 app.listen(PORT, () => {
   console.log('fuoconero automation listening on ' + PORT);
   startupSelftest();
-  Promise.all([
-    fetch("https://fuoconero-social-bridge-production.up.railway.app/youtube/test", { signal: AbortSignal.timeout(30000) }).then(r => ({route:"youtube_test",status:r.status})).catch(e => ({route:"youtube_test",status:0,error:e instanceof Error?e.message:String(e)})),
-    fetch("https://fuoconero-social-bridge-production.up.railway.app/facebook/test", { signal: AbortSignal.timeout(30000) }).then(r => ({route:"facebook_test",status:r.status})).catch(e => ({route:"facebook_test",status:0,error:e instanceof Error?e.message:String(e)})),
-    fetch("https://fuoconero-social-bridge-production.up.railway.app/health", { signal: AbortSignal.timeout(30000) }).then(r => ({route:"health",status:r.status})).catch(e => ({route:"health",status:0,error:e instanceof Error?e.message:String(e)}))
-  ]).then(results => console.log("SOCIAL_ROUTE_PROBE " + JSON.stringify(results)));
+  if (PUBLISH_PIN) {
+    fetch(SOCIAL_BRIDGE_URL + '/status', {
+      headers: { 'X-Publish-Pin': PUBLISH_PIN },
+      signal: AbortSignal.timeout(60000)
+    })
+      .then(async (r) => console.log('SOCIAL_STATUS ' + r.status + ' ' + (await r.text()).slice(0,4000)))
+      .catch((e) => console.error('SOCIAL_STATUS_FAILED ' + (e instanceof Error ? e.message : String(e))));
+  }
 });
