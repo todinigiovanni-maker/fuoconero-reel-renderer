@@ -48,7 +48,57 @@ function urlSlug(articleUrl) {
 async function fetchJson(url,timeout=25000) {
   const r=await fetch(url,{headers:{'User-Agent':'FuoconeroAutomation/1.1'},signal:AbortSignal.timeout(timeout)});
   if(!r.ok) throw new Error('HTTP '+r.status+' su '+url);
+  const text=await r.text();
+  try { return JSON.parse(text); }
+  catch { throw new Error('Risposta WordPress non JSON'); }
+}
+
+async function fetchText(url,timeout=25000) {
+  const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0 FuoconeroAutomation/1.1'},signal:AbortSignal.timeout(timeout)});
+  if(!r.ok) throw new Error('HTTP '+r.status+' su '+url);
+  return r.text();
+}
+
+function escapeRegex(s='') {
+  return String(s).replace(/[.*+?^$(){}|[\]\\]/g,'\\async function fetchJson(url,timeout=25000) {
+  const r=await fetch(url,{headers:{'User-Agent':'FuoconeroAutomation/1.1'},signal:AbortSignal.timeout(timeout)});
+  if(!r.ok) throw new Error('HTTP '+r.status+' su '+url);
   return r.json();
+}
+');
+}
+
+function metaContent(html,key,attr='property') {
+  const k=escapeRegex(key);
+  const a=escapeRegex(attr);
+  const re1=new RegExp('<meta[^>]*'+a+'=["\\\']'+k+'["\\\'][^>]*content=["\\\']([^"\\\']*)["\\\'][^>]*>','i');
+  const re2=new RegExp('<meta[^>]*content=["\\\']([^"\\\']*)["\\\'][^>]*'+a+'=["\\\']'+k+'["\\\'][^>]*>','i');
+  return htmlText((html.match(re1)||html.match(re2)||[])[1]||'');
+}
+
+function parseHtmlArticle(html,url,slug) {
+  const articleMatch=html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i);
+  const mainMatch=html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i);
+  const body=articleMatch?.[1]||mainMatch?.[1]||html;
+  const h1=body.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i);
+  const categoryMatches=[...html.matchAll(/<a[^>]+rel=["'][^"']*category[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi)];
+  const category=categoryMatches.map(m=>htmlText(m[1])).find(Boolean)||metaContent(html,'article:section')||'FUOCONERO';
+  const title=cleanTitle(metaContent(html,'og:title')||htmlText(h1?.[1]||slug.replace(/-/g,' ')));
+  const image=metaContent(html,'og:image')||metaContent(html,'twitter:image','name');
+  const excerpt=metaContent(html,'description','name')||metaContent(html,'og:description');
+  return {
+    id:null,
+    url,
+    slug,
+    date:metaContent(html,'article:published_time')||null,
+    title,
+    categories:[category],
+    category,
+    image,
+    image_alt:'',
+    excerpt,
+    content:htmlText(body)
+  };
 }
 
 export async function fetchBuffer(url,timeout=45000) {
@@ -65,28 +115,38 @@ export async function fetchBuffer(url,timeout=45000) {
 export async function parseArticle(articleUrl) {
   const {url,slug}=urlSlug(articleUrl);
   const api='https://fuoconero.com/wp-json/wp/v2/posts?slug='+encodeURIComponent(slug)+'&_embed=1';
-  const posts=await fetchJson(api);
-  if(!Array.isArray(posts)||!posts[0]) throw new Error('Articolo non trovato via WordPress REST API');
-  const p=posts[0];
-  const terms=p?._embedded?.['wp:term']?.flat?.()||[];
-  const categories=terms.filter(t=>t?.taxonomy==='category').map(t=>htmlText(t.name)).filter(Boolean);
-  const featured=p?._embedded?.['wp:featuredmedia']?.[0];
-  const image=featured?.source_url||
-    featured?.media_details?.sizes?.full?.source_url||
-    featured?.media_details?.sizes?.large?.source_url||'';
-  return {
-    id:p.id,
-    url:p.link||url,
-    slug,
-    date:p.date||null,
-    title:cleanTitle(p?.title?.rendered||slug.replace(/-/g,' ')),
-    categories,
-    category:categories[0]||'FUOCONERO',
-    image,
-    image_alt:featured?.alt_text||'',
-    excerpt:htmlText(p?.excerpt?.rendered||''),
-    content:htmlText(p?.content?.rendered||'')
-  };
+
+  try {
+    const posts=await fetchJson(api);
+    if(!Array.isArray(posts)||!posts[0]) throw new Error('Articolo non trovato via WordPress REST API');
+    const p=posts[0];
+    const terms=p?._embedded?.['wp:term']?.flat?.()||[];
+    const categories=terms.filter(t=>t?.taxonomy==='category').map(t=>htmlText(t.name)).filter(Boolean);
+    const featured=p?._embedded?.['wp:featuredmedia']?.[0];
+    const image=featured?.source_url||
+      featured?.media_details?.sizes?.full?.source_url||
+      featured?.media_details?.sizes?.large?.source_url||'';
+    return {
+      id:p.id,
+      url:p.link||url,
+      slug,
+      date:p.date||null,
+      title:cleanTitle(p?.title?.rendered||slug.replace(/-/g,' ')),
+      categories,
+      category:categories[0]||'FUOCONERO',
+      image,
+      image_alt:featured?.alt_text||'',
+      excerpt:htmlText(p?.excerpt?.rendered||''),
+      content:htmlText(p?.content?.rendered||'')
+    };
+  } catch (restError) {
+    const html=await fetchText(url);
+    const parsed=parseHtmlArticle(html,url,slug);
+    if(!parsed.title||!parsed.content) {
+      throw new Error('Impossibile estrarre articolo dal sito: '+String(restError?.message||restError));
+    }
+    return parsed;
+  }
 }
 
 export function buildReelPlan(article,override={}) {
