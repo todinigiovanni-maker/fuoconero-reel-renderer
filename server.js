@@ -173,6 +173,19 @@ app.post('/render-blog-url', auth, upload.fields([
     await fs.mkdir(tmpDir,{recursive:true});
 
     const musicUrl=String(req.body.musicUrl||'').trim();
+    const useDefaultMusic=String(req.body.useDefaultMusic||'')==='1';
+    if(!music && useDefaultMusic){
+      const parts=[];
+      for(let i=0;i<32;i++){
+        const v=process.env['FUOCONERO_AUDIO_B64_'+String(i).padStart(2,'0')];
+        if(!v) break;
+        parts.push(v);
+      }
+      if(!parts.length) throw new Error('Audio Fuoconero integrato non configurato');
+      const builtinPath=path.join(tmpDir,'fuoconero-builtin.m4a');
+      await fs.writeFile(builtinPath,Buffer.from(parts.join(''),'base64'));
+      music={path:builtinPath};
+    }
     if(!music && musicUrl){
       if(!/^https:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\//i.test(musicUrl)){
         throw new Error('musicUrl non supportato');
@@ -260,7 +273,7 @@ app.post('/render-blog-url', auth, upload.fields([
       ok:true,rendered:true,template:'FUOCONERO_BLOG_REEL_V1',
       video_url:videoUrl,expires_in_seconds:3600,bytes:st.size,
       width:1080,height:1920,duration,codec:'h264',
-      audio:{voice:Boolean(voice),music:Boolean(music),music_source:musicUrl?'youtube':'upload'}
+      audio:{voice:Boolean(voice),music:Boolean(music),music_source:useDefaultMusic?'builtin':(musicUrl?'youtube':'upload')}
     });
   }catch(e){
     await Promise.allSettled([
