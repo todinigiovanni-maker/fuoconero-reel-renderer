@@ -7,6 +7,7 @@ const app = new Hono();
 const IG_BASE = "https://graph.instagram.com/v26.0";
 const FB_BASE = "https://graph.facebook.com/v26.0";
 const YOUTUBE_TOKEN_FILE = "/data/youtube-oauth.json";
+const FUOCONERO_MUSIC_FILE = "/data/fuoconero-music-carrier.mp4";
 const YOUTUBE_STATE_MAX_AGE_MS = 10 * 60 * 1000;
 const PUBLIC_BASE = "https://fuoconero-social-bridge-production.up.railway.app";
 
@@ -316,6 +317,34 @@ async function publishToFacebook(videoUrl: string, description: string) {
 }
 
 app.get("/health", (c) => c.json({ ok: true, service: "fuoconero-social-bridge", version: "3.0.0" }));
+
+async function ensureFuoconeroMusicAsset(): Promise<void> {
+  const file = Bun.file(FUOCONERO_MUSIC_FILE);
+  if (await file.exists() && file.size > 35000) return;
+  const seed = Bun.env.FUOCONERO_MUSIC_SEED_URL || "";
+  if (!seed) throw new Error("Seed musica Fuoconero mancante");
+  const response = await fetch(seed, { redirect: "follow", signal: AbortSignal.timeout(120000) });
+  if (!response.ok) throw new Error("Download seed musica HTTP " + response.status);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.byteLength < 35000) throw new Error("Seed musica Fuoconero incompleto");
+  await Bun.write(FUOCONERO_MUSIC_FILE, bytes);
+}
+
+app.get("/assets/fuoconero-music.mp4", async (c) => {
+  try {
+    await ensureFuoconeroMusicAsset();
+    const file = Bun.file(FUOCONERO_MUSIC_FILE);
+    return new Response(file, {
+      headers: {
+        "Content-Type": "video/mp4",
+        "Content-Length": String(file.size),
+        "Cache-Control": "public, max-age=3600"
+      }
+    });
+  } catch (e) {
+    return c.json({ ok: false, error: safeError(e) }, 503);
+  }
+});
 
 app.get("/status", async (c) => {
   const statusPin = String(c.req.header("X-Publish-Pin") || "");
