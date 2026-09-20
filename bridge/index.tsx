@@ -317,7 +317,8 @@ async function publishToFacebook(videoUrl: string, description: string) {
 app.get("/health", (c) => c.json({ ok: true, service: "fuoconero-social-bridge", version: "3.0.0" }));
 
 app.get("/status", async (c) => {
-  if (!checkBearer(c)) return c.json({ ok: false, error: "Non autorizzato" }, 401);
+  const statusPin = String(c.req.header("X-Publish-Pin") || "");
+  if (!checkBearer(c) && !checkPin(statusPin)) return c.json({ ok: false, error: "Non autorizzato" }, 401);
   const results: any = {};
 
   try {
