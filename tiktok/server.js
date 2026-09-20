@@ -180,6 +180,12 @@ function bridgeAuth(req,res,next){
 }
 
 
+app.get('/demo/reset',async(_req,res)=>{
+  try{ await fs.unlink(TOKEN_FILE); }catch(e){ if(e?.code!=='ENOENT') console.error('DEMO_RESET_TOKEN_ERROR '+(e instanceof Error?e.message:String(e))); }
+  res.setHeader('Set-Cookie','fuoconero_demo=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0');
+  res.redirect('/demo');
+});
+
 app.get('/',(_req,res)=>res.redirect('/demo'));
 
 app.get('/demo',async(req,res)=>{
