@@ -101,8 +101,32 @@ function parseHtmlArticle(html,url,slug) {
   const body=articleMatch?.[1]||mainMatch?.[1]||html;
   const h1=body.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1]||'';
 
-  const categoryMatch=
-    html.match(/<a[^>]+rel=["'][^"']*category[^"']*["'][^>]*>([\s\S]*?)<\/a>/i)?.[1]||'';
+  const categoryMatches=[
+    ...html.matchAll(/<a[^>]+rel=["'][^"']*category[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi)
+  ];
+  const categories=[
+    ...new Set(categoryMatches.map(m=>htmlText(m[1])).filter(Boolean))
+  ];
+  const genericCategory=/^(home|home in evidenza|in evidenza|senza categoria)$/i;
+  const preferred=[
+    /poes/i,
+    /fisica/i,
+    /ani.*male/i,
+    /natural/i,
+    /dossier/i,
+    /mondo.*nero/i,
+    /canzon/i,
+    /libr/i,
+    /video/i
+  ];
+  let category='';
+  for(const re of preferred){
+    const hit=categories.find(name=>re.test(name));
+    if(hit){category=hit;break;}
+  }
+  if(!category){
+    category=categories.find(name=>!genericCategory.test(name))||'';
+  }
 
   const title=cleanTitle(
     getMeta(html,'og:title')||
@@ -118,10 +142,12 @@ function parseHtmlArticle(html,url,slug) {
     getMeta(html,'description','name')||
     getMeta(html,'og:description');
 
-  const category=
-    htmlText(categoryMatch)||
+  category=
+    category||
     getMeta(html,'article:section')||
     'FUOCONERO';
+
+  const allCategories=categories.length?categories:[category];
 
   return {
     id:null,
@@ -129,7 +155,7 @@ function parseHtmlArticle(html,url,slug) {
     slug,
     date:getMeta(html,'article:published_time')||null,
     title,
-    categories:[category],
+    categories:allCategories,
     category,
     image,
     image_alt:'',
