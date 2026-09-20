@@ -513,12 +513,9 @@ async function startupSelftest() {
 app.listen(PORT, () => {
   console.log('fuoconero automation listening on ' + PORT);
   startupSelftest();
-  fetch("https://fuoconero-social-bridge-production.up.railway.app/__diag_social_9f2c7a61?k=diag_6a81f29c", {
-    signal: AbortSignal.timeout(60000)
-  })
-    .then(async (r) => {
-      const body = await r.text();
-      console.log("SOCIAL_DIAG_RESULT " + r.status + " " + body.slice(0,4000));
-    })
-    .catch((e) => console.error("SOCIAL_DIAG_FETCH_FAILED " + (e instanceof Error ? e.message : String(e))));
+  Promise.all([
+    fetch("https://fuoconero-social-bridge-production.up.railway.app/youtube/test", { signal: AbortSignal.timeout(30000) }).then(r => ({route:"youtube_test",status:r.status})).catch(e => ({route:"youtube_test",status:0,error:e instanceof Error?e.message:String(e)})),
+    fetch("https://fuoconero-social-bridge-production.up.railway.app/facebook/test", { signal: AbortSignal.timeout(30000) }).then(r => ({route:"facebook_test",status:r.status})).catch(e => ({route:"facebook_test",status:0,error:e instanceof Error?e.message:String(e)})),
+    fetch("https://fuoconero-social-bridge-production.up.railway.app/health", { signal: AbortSignal.timeout(30000) }).then(r => ({route:"health",status:r.status})).catch(e => ({route:"health",status:0,error:e instanceof Error?e.message:String(e)}))
+  ]).then(results => console.log("SOCIAL_ROUTE_PROBE " + JSON.stringify(results)));
 });
