@@ -36,7 +36,7 @@ app.get('/selftest', async (_req,res)=>{
     res.json({ok:true,rendered:true,width:1080,height:1920,duration:1,bytes:st.size,codec:'h264',pixelFormat:'yuv420p'});
   }catch(e){
     await Promise.allSettled([fs.unlink(out)]);
-    res.status(500).json({ok:false,error:e instanceof Error?e.message:'Errore self-test'});
+    console.error('selftest failed', e); res.status(500).json({ok:false,error:e instanceof Error?e.message:'Errore self-test'});
   }
 });
 
