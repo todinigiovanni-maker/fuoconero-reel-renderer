@@ -167,7 +167,8 @@ async function uploadYoutubeBytes(
   contentType: string,
   title: string,
   description: string,
-  tags: string[]
+  tags: string[],
+  privacyStatus: "public" | "private" | "unlisted" = "private"
 ): Promise<{ id: string }> {
   const accessToken = await getYoutubeAccessToken();
   const initUrl = new URL("https://www.googleapis.com/upload/youtube/v3/videos");
@@ -190,7 +191,7 @@ async function uploadYoutubeBytes(
         categoryId: "22"
       },
       status: {
-        privacyStatus: "private",
+        privacyStatus,
         selfDeclaredMadeForKids: false
       }
     }),
@@ -490,12 +491,14 @@ app.post("/youtube/short", async (c) => {
 
   try {
     const media = await fetchVideo(videoUrl);
-    const uploaded = await uploadYoutubeBytes(media.bytes, media.contentType, title, description, tags);
+    const requestedPrivacy = String(body.privacy_status || "private").toLowerCase();
+    const privacyStatus = (["public","private","unlisted"].includes(requestedPrivacy) ? requestedPrivacy : "private") as "public" | "private" | "unlisted";
+    const uploaded = await uploadYoutubeBytes(media.bytes, media.contentType, title, description, tags, privacyStatus);
     return c.json({
       ok: true,
       platform: "youtube",
       video_id: uploaded.id,
-      privacy_status: "private",
+      privacy_status: privacyStatus,
       url: "https://www.youtube.com/watch?v=" + uploaded.id
     });
   } catch (e) {
