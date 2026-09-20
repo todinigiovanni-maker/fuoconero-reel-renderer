@@ -112,7 +112,7 @@ app.post('/expose-existing', upload.single('video'), async (req,res)=>{
     await fs.unlink(video.path).catch(()=>{});
     res.status(500).json({ok:false,error:e instanceof Error?e.message:'Errore esposizione video'});
   }
-
+});
 
 // Full-size public URL validation, without publishing to social platforms.
 app.get('/pipeline-selftest', async (req,res)=>{
