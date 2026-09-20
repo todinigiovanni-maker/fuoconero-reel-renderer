@@ -285,49 +285,6 @@ app.post('/blog-reel', auth, async (req, res) => {
 });
 
 
-let __fuoconeroOneShotRunning = false;
-let __fuoconeroOneShotDone = false;
-app.get('/__run_once_9f3a7c2e4b1d6a8c5e0f', (_req, res) => {
-  if (__fuoconeroOneShotDone) return res.status(409).json({ ok: false, state: 'done' });
-  if (__fuoconeroOneShotRunning) return res.status(409).json({ ok: false, state: 'running' });
-  __fuoconeroOneShotRunning = true;
-  res.status(202).json({ ok: true, started: true });
-  void (async () => {
-    try {
-      const url = 'https://fuoconero.com/2026/09/18/fisicamente-hanno-teletrasportato-unimmagine-ma-la-vera-notizia-non-e-quella/';
-      const article = await parseArticle(url);
-      const plan = buildReelPlan(article, {});
-      const rendered = await renderBlog({
-        article,
-        plan,
-        voiceUrl: '',
-        musicUrl: FUOCONERO_MUSIC_URL || '',
-        duration: 17
-      });
-      const results = await publishRendered({
-        videoUrl: rendered.video_url,
-        caption: plan.caption,
-        platform: 'both',
-        youtube: true,
-        youtubeTitle: plan.title,
-        youtubeDescription: plan.caption,
-        youtubeTags: plan.hashtags.join(','),
-        tiktok: false
-      });
-      __fuoconeroOneShotDone = true;
-      console.log('FUOCONERO_ONE_SHOT_OK ' + JSON.stringify({
-        article: article.title,
-        video_url: rendered.video_url,
-        results
-      }));
-    } catch (error) {
-      console.error('FUOCONERO_ONE_SHOT_ERROR ' + detail(error));
-    } finally {
-      __fuoconeroOneShotRunning = false;
-    }
-  })();
-});
-
 app.get('/health', (_req, res) => {
   res.json({ ok: true, service: 'fuoconero-automation', version: '1.1.0' });
 });
