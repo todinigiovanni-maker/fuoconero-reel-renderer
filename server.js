@@ -164,51 +164,99 @@ app.post('/render-blog-url', auth, upload.fields([
 ]), async (req,res)=>{
   const image=req.files?.image?.[0], voice=req.files?.voice?.[0], music=req.files?.music?.[0];
   if(!image) return res.status(400).json({ok:false,error:'Immagine mancante'});
-  const duration=Math.min(Math.max(Number(req.body.duration)||17,10),30);
+  const duration=Math.min(Math.max(Number(req.body.duration)||17.6,10),30);
   const id=crypto.randomUUID(), out=path.join(PUBLIC_DIR,id+'.mp4');
-  const category=escMultiline(String(req.body.category||'FUOCONERO').slice(0,60),28);
-  const title=escMultiline(String(req.body.title||'FUOCONERO').slice(0,120),24);
-  const subtitle=escMultiline(String(req.body.subtitle||'').slice(0,160),32);
-  const hook=escMultiline(String(req.body.hook||'').slice(0,220),34);
-  const keyPoint=escMultiline(String(req.body.keyPoint||'').slice(0,220),34);
-  const highlight=escMultiline(String(req.body.highlight||'').slice(0,260),32);
-  const close=escMultiline(String(req.body.close||'').slice(0,240),34);
-  const cta=escMultiline(String(req.body.cta||'Leggi tutto su fuoconero.com').slice(0,160),32);
+  const tmpDir=path.join('/tmp','blog-'+id);
   try{
     await fs.mkdir(PUBLIC_DIR,{recursive:true});
+    await fs.mkdir(tmpDir,{recursive:true});
+
+    const values={
+      category: wrapText(String(req.body.category||'FUOCONERO').slice(0,60),24),
+      title: wrapText(String(req.body.title||'FUOCONERO').slice(0,120),20),
+      subtitle: wrapText(String(req.body.subtitle||'').slice(0,160),30),
+      hook: wrapText(String(req.body.hook||'').slice(0,220),28),
+      keyPoint: wrapText(String(req.body.keyPoint||'').slice(0,220),28),
+      highlight: wrapText(String(req.body.highlight||'').slice(0,260),27),
+      close: wrapText(String(req.body.close||'').slice(0,240),28),
+      cta: wrapText(String(req.body.cta||'Leggi tutto su fuoconero.com').slice(0,160),28)
+    };
+
+    const files={};
+    for(const [k,v] of Object.entries(values)){
+      const p=path.join(tmpDir,k+'.txt');
+      await fs.writeFile(p,v,'utf8');
+      files[k]=p;
+    }
+
+    const d=(file,size,y,start,end,bold=true)=>
+      "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/"+
+      (bold?"DejaVuSans-Bold.ttf":"DejaVuSans.ttf")+
+      ":textfile='"+file+
+      "':reload=0:fontcolor=white:fontsize="+size+
+      ":line_spacing=12:x=(w-text_w)/2:y="+y+
+      ":fix_bounds=1:shadowx=2:shadowy=2:shadowcolor=black@0.9:enable='between(t,"+start+","+end+")'";
+
     let fc="[0:v]split=2[bg0][fg0];"+
-      "[bg0]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=28:2,eq=brightness=-0.28:saturation=0.72[bg];"+
-      "[fg0]scale=1040:1120:force_original_aspect_ratio=decrease[fg];"+
-      "[bg][fg]overlay=(W-w)/2:430:format=auto,drawbox=x=0:y=0:w=1080:h=420:color=black@0.66:t=fill[v0];"+
-      "[v0]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='"+category+"':fontcolor=white@0.78:fontsize=30:x=(w-text_w)/2:y=48:enable='between(t,0,"+duration+")'[v1];"+
-      "[v1]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='"+title+"':fontcolor=white:fontsize=68:line_spacing=10:x=(w-text_w)/2:y=115:shadowx=2:shadowy=2:shadowcolor=black@0.8:enable='between(t,0,1.15)'[v2];"+
-      "[v2]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='"+subtitle+"':fontcolor=white@0.92:fontsize=34:line_spacing=8:x=(w-text_w)/2:y=292:shadowx=2:shadowy=2:shadowcolor=black@0.8:enable='between(t,0,1.15)'[v3];"+
-      "[v3]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='"+hook+"':fontcolor=white:fontsize=54:line_spacing=12:x=(w-text_w)/2:y=145:shadowx=2:shadowy=2:shadowcolor=black@0.85:enable='between(t,1.15,4.35)'[v4];"+
-      "[v4]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='"+keyPoint+"':fontcolor=white:fontsize=56:line_spacing=12:x=(w-text_w)/2:y=145:shadowx=2:shadowy=2:shadowcolor=black@0.85:enable='between(t,4.35,7.15)'[v5];"+
-      "[v5]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='"+highlight+"':fontcolor=white:fontsize=50:line_spacing=12:x=(w-text_w)/2:y=128:shadowx=2:shadowy=2:shadowcolor=black@0.85:enable='between(t,7.15,13.55)'[v6];"+
-      "[v6]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='"+close+"':fontcolor=white:fontsize=52:line_spacing=12:x=(w-text_w)/2:y=145:shadowx=2:shadowy=2:shadowcolor=black@0.85:enable='between(t,13.55,16.55)'[v7];"+
-      "[v7]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='"+cta+"':fontcolor=white:fontsize=50:line_spacing=10:x=(w-text_w)/2:y=145:shadowx=2:shadowy=2:shadowcolor=black@0.9:enable='between(t,16.55,"+duration+")'[vout]";
+      "[bg0]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=28:2,eq=brightness=-0.30:saturation=0.72[bg];"+
+      "[fg0]scale=980:1110:force_original_aspect_ratio=decrease[fg];"+
+      "[bg][fg]overlay=(W-w)/2:485:format=auto,"+
+      "drawbox=x=42:y=42:w=996:h=365:color=black@0.72:t=fill,"+
+      "drawbox=x=42:y=1600:w=996:h=220:color=black@0.50:t=fill[v0];"+
+      "[v0]"+d(files.category,28,62,0,duration,true)+"[v1];"+
+      "[v1]"+d(files.title,62,118,0,1.15,true)+"[v2];"+
+      "[v2]"+d(files.subtitle,32,270,0,1.15,false)+"[v3];"+
+      "[v3]"+d(files.hook,48,125,1.15,4.35,true)+"[v4];"+
+      "[v4]"+d(files.keyPoint,50,125,4.35,7.15,true)+"[v5];"+
+      "[v5]"+d(files.highlight,46,108,7.15,13.55,true)+"[v6];"+
+      "[v6]"+d(files.close,48,125,13.55,16.45,true)+"[v7];"+
+      "[v7]"+d(files.cta,46,115,16.45,duration,true)+"[vout]";
+
     const args=['-y','-loop','1','-i',image.path];
     let idx=1,vi=null,mi=null;
     if(voice){vi=idx++;args.push('-i',voice.path);}
     if(music){mi=idx++;args.push('-stream_loop','-1','-i',music.path);}
     let audioMap=null;
+
     if(vi!==null&&mi!==null){
       fc+=';['+vi+':a]adelay=1000|1000,volume=1.0[va];['+mi+':a]volume=0.10,afade=t=in:st=0:d=0.7,afade=t=out:st='+(duration-1.5)+':d=1.5[ma];[va][ma]amix=inputs=2:duration=longest:dropout_transition=2[aout]';
       audioMap='[aout]';
-    }else if(vi!==null){fc+=';['+vi+':a]adelay=1000|1000,volume=1.0[aout]';audioMap='[aout]';}
-    else if(mi!==null){fc+=';['+mi+':a]volume=0.18,afade=t=in:st=0:d=0.7,afade=t=out:st='+(duration-1.5)+':d=1.5[aout]';audioMap='[aout]';}
+    }else if(vi!==null){
+      fc+=';['+vi+':a]adelay=1000|1000,volume=1.0[aout]';
+      audioMap='[aout]';
+    }else if(mi!==null){
+      fc+=';['+mi+':a]volume=0.18,afade=t=in:st=0:d=0.7,afade=t=out:st='+(duration-1.5)+':d=1.5[aout]';
+      audioMap='[aout]';
+    }
+
     args.push('-filter_complex',fc,'-map','[vout]');
     if(audioMap) args.push('-map',audioMap);
     args.push('-t',String(duration),'-r','30','-c:v','libx264','-preset','veryfast','-threads','2','-crf','23','-pix_fmt','yuv420p');
     if(audioMap) args.push('-c:a','aac','-b:a','192k'); else args.push('-an');
     args.push('-movflags','+faststart',out);
+
     await run('ffmpeg',args);
     const st=await fs.stat(out), videoUrl=await exposeVideo(out,req);
-    await Promise.allSettled([fs.unlink(image.path),voice?fs.unlink(voice.path):Promise.resolve(),music?fs.unlink(music.path):Promise.resolve()]);
-    res.json({ok:true,rendered:true,template:'FUOCONERO_BLOG_REEL_V1',video_url:videoUrl,expires_in_seconds:3600,bytes:st.size,width:1080,height:1920,duration,codec:'h264',audio:{voice:Boolean(voice),music:Boolean(music)}});
+    await Promise.allSettled([
+      fs.unlink(image.path),
+      voice?fs.unlink(voice.path):Promise.resolve(),
+      music?fs.unlink(music.path):Promise.resolve(),
+      fs.rm(tmpDir,{recursive:true,force:true})
+    ]);
+    res.json({
+      ok:true,rendered:true,template:'FUOCONERO_BLOG_REEL_V1',
+      video_url:videoUrl,expires_in_seconds:3600,bytes:st.size,
+      width:1080,height:1920,duration,codec:'h264',
+      audio:{voice:Boolean(voice),music:Boolean(music)}
+    });
   }catch(e){
-    await Promise.allSettled([fs.unlink(image.path),voice?fs.unlink(voice.path):Promise.resolve(),music?fs.unlink(music.path):Promise.resolve(),fs.unlink(out)]);
+    await Promise.allSettled([
+      fs.unlink(image.path),
+      voice?fs.unlink(voice.path):Promise.resolve(),
+      music?fs.unlink(music.path):Promise.resolve(),
+      fs.unlink(out),
+      fs.rm(tmpDir,{recursive:true,force:true})
+    ]);
     res.status(500).json({ok:false,error:e instanceof Error?e.message:'Errore blog renderer'});
   }
 });
