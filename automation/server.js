@@ -15,6 +15,9 @@ const RENDERER_SECRET = process.env.RENDERER_SECRET || '';
 const SOCIAL_BRIDGE_URL =
   process.env.SOCIAL_BRIDGE_URL ||
   'https://fuoconero-social-bridge-production.up.railway.app';
+const TIKTOK_BRIDGE_URL =
+  process.env.TIKTOK_BRIDGE_URL ||
+  'https://fuoconero-reel-renderer-production.up.railway.app';
 const PUBLISH_PIN = process.env.PUBLISH_PIN || '';
 const AUTOMATION_SECRET = process.env.AUTOMATION_SECRET || '';
 const FUOCONERO_MUSIC_URL = process.env.FUOCONERO_MUSIC_URL || '';
@@ -117,7 +120,7 @@ async function renderBlog({ article, plan, voiceUrl, musicUrl, duration = 17 }) 
   return payload;
 }
 
-async function publishRendered({ videoUrl, caption, platform = 'none', youtube = false, youtubeTitle = 'FUOCONERO', youtubeDescription = '', youtubeTags = '' }) {
+async function publishRendered({ videoUrl, caption, platform = 'none', youtube = false, youtubeTitle = 'FUOCONERO', youtubeDescription = '', youtubeTags = '', tiktok = false, tiktokPrivacy = 'SELF_ONLY' }) {
   if (!PUBLISH_PIN) throw new Error('PUBLISH_PIN non configurato');
   const results = {};
 
@@ -152,6 +155,24 @@ async function publishRendered({ videoUrl, caption, platform = 'none', youtube =
       signal: AbortSignal.timeout(300000)
     });
     results.youtube = { status: yt.status, body: await yt.json() };
+  }
+
+  if (tiktok) {
+    const tt = await fetch(TIKTOK_BRIDGE_URL + '/post', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Publish-Pin': PUBLISH_PIN },
+      body: JSON.stringify({
+        video_url: videoUrl,
+        title: caption,
+        privacy_level: String(tiktokPrivacy || 'SELF_ONLY'),
+        disable_duet: false,
+        disable_comment: false,
+        disable_stitch: false,
+        confirmed: true
+      }),
+      signal: AbortSignal.timeout(300000)
+    });
+    results.tiktok = { status: tt.status, body: await tt.json() };
   }
 
   return results;
@@ -240,7 +261,9 @@ app.post('/blog-reel', auth, async (req, res) => {
       youtube,
       youtubeTitle: plan.title,
       youtubeDescription: plan.caption,
-      youtubeTags: plan.hashtags.join(',')
+      youtubeTags: plan.hashtags.join(','),
+      tiktok: req.body?.tiktok === true,
+      tiktokPrivacy: String(req.body?.tiktok_privacy || 'SELF_ONLY')
     });
 
     return res.json({
