@@ -24,22 +24,26 @@ function unb64url(s){
 function key(){
   return crypto.createHash('sha256').update(BRIDGE_SECRET||'fuoconero-tiktok').digest();
 }
-function makeState(){
-  const payload=Buffer.from(JSON.stringify({ts:Date.now(),nonce:b64url(crypto.randomBytes(18))}));
+function makeState(returnHost=''){
+  const payload=Buffer.from(JSON.stringify({ts:Date.now(),nonce:b64url(crypto.randomBytes(18)),return_host:String(returnHost||'')}));
   const p=b64url(payload);
   const sig=b64url(crypto.createHmac('sha256',key()).update(p).digest());
   return p+'.'+sig;
 }
-function verifyState(state=''){
+function readState(state=''){
   try{
     const [p,s]=state.split('.');
-    if(!p||!s) return false;
+    if(!p||!s) return null;
     const expected=crypto.createHmac('sha256',key()).update(p).digest();
     const actual=unb64url(s);
-    if(expected.length!==actual.length||!crypto.timingSafeEqual(expected,actual)) return false;
+    if(expected.length!==actual.length||!crypto.timingSafeEqual(expected,actual)) return null;
     const body=JSON.parse(unb64url(p).toString('utf8'));
-    return Number.isFinite(body.ts)&&Date.now()-body.ts>=0&&Date.now()-body.ts<=10*60*1000;
-  }catch{return false;}
+    if(!Number.isFinite(body.ts)||Date.now()-body.ts<0||Date.now()-body.ts>10*60*1000) return null;
+    return body;
+  }catch{return null;}
+}
+function verifyState(state=''){
+  return Boolean(readState(state));
 }
 async function saveTokens(tokens){
   await fs.mkdir('/data',{recursive:true});
@@ -189,6 +193,11 @@ app.get('/demo/reset',async(_req,res)=>{
 app.get('/',(_req,res)=>res.redirect('/demo'));
 
 app.get('/demo',async(req,res)=>{
+  const incomingSession=String(req.query?.session||'');
+  if(incomingSession&&verifyDemoSession(incomingSession)){
+    res.setHeader('Set-Cookie','fuoconero_demo='+encodeURIComponent(incomingSession)+'; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=7200');
+    return res.redirect('/demo');
+  }
   const connected=demoAuthorized(req);
   let creator={};
   if(connected) creator=await demoCreator();
@@ -347,15 +356,18 @@ app.get('/connect',(req,res)=>{
   u.searchParams.set('response_type','code');
   u.searchParams.set('scope','user.info.basic,video.publish');
   u.searchParams.set('redirect_uri',REDIRECT_URI);
-  u.searchParams.set('state',makeState());
+  const host=String(req.get('host')||'').split(':')[0].toLowerCase();
+  const returnHost=host==='social.fuoconero.com'?'social.fuoconero.com':'';
+  u.searchParams.set('state',makeState(returnHost));
   res.redirect(u.toString());
 });
 
 app.get('/oauth/callback',async(req,res)=>{
   try{
     const {code,state,error,error_description}=req.query;
+    const stateData=readState(String(state||''));
     if(error) return res.status(400).send('TikTok ha rifiutato l’autorizzazione: '+String(error_description||error));
-    if(!code||!verifyState(String(state||''))) return res.status(400).send('Richiesta OAuth non valida o scaduta');
+    if(!code||!stateData) return res.status(400).send('Richiesta OAuth non valida o scaduta');
     const t=await tokenRequest({
       client_key:CLIENT_KEY,
       client_secret:CLIENT_SECRET,
@@ -369,6 +381,9 @@ app.get('/oauth/callback',async(req,res)=>{
       refresh_expires_at:Date.now()+Number(t.refresh_expires_in||31536000)*1000
     });
     const session=makeDemoSession(t.open_id||'');
+    if(stateData.return_host==='social.fuoconero.com'){
+      return res.redirect('https://social.fuoconero.com/demo?session='+encodeURIComponent(session));
+    }
     res.setHeader('Set-Cookie','fuoconero_demo='+encodeURIComponent(session)+'; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=7200');
     res.type('html').send(pageShell(`
       <div class="brand"><div class="mark">★</div><div><h1>Fuoconero Social</h1><p>Integrazione TikTok Content Posting API</p></div></div>
