@@ -467,6 +467,7 @@ async function startupSelftest() {
         'https://fuoconero.com/2026/09/14/pruriti-quando-imparare-significa-modificare-la-carne/'
       );
       const plan = buildReelPlan(article, {
+        category: 'POESIA',
         title: 'PRURITI',
         subtitle: 'Quando imparare significa modificare la carne',
         hook: 'Imparare non significa soltanto sapere qualcosa in più.',
@@ -480,7 +481,7 @@ async function startupSelftest() {
         plan,
         voiceUrl: process.env.BLOG_TEST_VOICE_URL || '',
         musicUrl: process.env.BLOG_TEST_MUSIC_URL || '',
-        duration: 17
+        duration: 17.6
       });
       const blogVideo = await fetch(blogRendered.video_url, {
         signal: AbortSignal.timeout(120000)
