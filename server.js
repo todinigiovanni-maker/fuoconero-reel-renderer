@@ -162,7 +162,8 @@ app.post('/render-url', auth, upload.fields([{name:'image',maxCount:1},{name:'au
 app.post('/render-blog-url', auth, upload.fields([
   {name:'image',maxCount:1},{name:'voice',maxCount:1},{name:'music',maxCount:1}
 ]), async (req,res)=>{
-  const image=req.files?.image?.[0], voice=req.files?.voice?.[0], music=req.files?.music?.[0];
+  const image=req.files?.image?.[0], voice=req.files?.voice?.[0];
+  let music=req.files?.music?.[0];
   if(!image) return res.status(400).json({ok:false,error:'Immagine mancante'});
   const duration=Math.min(Math.max(Number(req.body.duration)||17.6,10),30);
   const id=crypto.randomUUID(), out=path.join(PUBLIC_DIR,id+'.mp4');
@@ -170,6 +171,18 @@ app.post('/render-blog-url', auth, upload.fields([
   try{
     await fs.mkdir(PUBLIC_DIR,{recursive:true});
     await fs.mkdir(tmpDir,{recursive:true});
+
+    const musicUrl=String(req.body.musicUrl||'').trim();
+    if(!music && musicUrl){
+      if(!/^https:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\//i.test(musicUrl)){
+        throw new Error('musicUrl non supportato');
+      }
+      const musicTemplate=path.join(tmpDir,'music.%(ext)s');
+      await run('yt-dlp',['--no-playlist','-f','bestaudio','-o',musicTemplate,musicUrl]);
+      const musicFiles=(await fs.readdir(tmpDir)).filter(n=>n.startsWith('music.'));
+      if(!musicFiles.length) throw new Error('Download musica non riuscito');
+      music={path:path.join(tmpDir,musicFiles[0])};
+    }
 
     const values={
       category: wrapText(String(req.body.category||'FUOCONERO').slice(0,60),24),
@@ -247,7 +260,7 @@ app.post('/render-blog-url', auth, upload.fields([
       ok:true,rendered:true,template:'FUOCONERO_BLOG_REEL_V1',
       video_url:videoUrl,expires_in_seconds:3600,bytes:st.size,
       width:1080,height:1920,duration,codec:'h264',
-      audio:{voice:Boolean(voice),music:Boolean(music)}
+      audio:{voice:Boolean(voice),music:Boolean(music),music_source:musicUrl?'youtube':'upload'}
     });
   }catch(e){
     await Promise.allSettled([
