@@ -86,6 +86,34 @@ app.get('/media/:name', async (req,res)=>{
   }
 });
 
+app.post('/expose-existing', upload.single('video'), async (req,res)=>{
+  const key=process.env.TEMP_UPLOAD_KEY||'';
+  if(!key || req.get('x-temp-upload-key')!==key) return res.status(401).json({ok:false,error:'Non autorizzato'});
+  const video=req.file;
+  if(!video) return res.status(400).json({ok:false,error:'Video mancante'});
+  if(video.mimetype!=='video/mp4'){
+    await fs.unlink(video.path).catch(()=>{});
+    return res.status(400).json({ok:false,error:'Formato non supportato'});
+  }
+  try{
+    await fs.mkdir(PUBLIC_DIR,{recursive:true});
+    const out=path.join(PUBLIC_DIR,crypto.randomUUID()+'.mp4');
+    await fs.rename(video.path,out);
+    const st=await fs.stat(out);
+    const timer=setTimeout(()=>{ fs.unlink(out).catch(()=>{}); },PUBLIC_TTL_MS);
+    if(typeof timer.unref==='function') timer.unref();
+    res.json({
+      ok:true,
+      video_url:`${PUBLIC_BASE_URL}/media/${encodeURIComponent(path.basename(out))}`,
+      expires_in_seconds:3600,
+      bytes:st.size
+    });
+  }catch(e){
+    await fs.unlink(video.path).catch(()=>{});
+    res.status(500).json({ok:false,error:e instanceof Error?e.message:'Errore esposizione video'});
+  }
+
+
 // Full-size public URL validation, without publishing to social platforms.
 app.get('/pipeline-selftest', async (req,res)=>{
   const id=crypto.randomUUID(); const out=path.join(PUBLIC_DIR,id+'.mp4');
