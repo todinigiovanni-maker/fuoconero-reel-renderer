@@ -76,16 +76,15 @@ app.get('/health', (_req, res) => {
 
 app.get('/selftest', async (_req, res) => {
   try {
-    const ppm = Buffer.from(
-      'P3\n2 2\n255\n' +
-      '16 16 20  16 16 20\n' +
-      '16 16 20  16 16 20\n'
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAFElEQVR4nGMUEBBhgAEmBiSAmwMACygAPDOMYd8AAAAASUVORK5CYII=',
+      'base64'
     );
 
     const rendered = await render({
-      imageBuffer: ppm,
-      imageName: 'selftest.ppm',
-      imageType: 'image/x-portable-pixmap',
+      imageBuffer: png,
+      imageName: 'selftest.png',
+      imageType: 'image/png',
       audioBuffer: null,
       title: 'FUOCONERO',
       subtitle: 'fuoconero.com',
@@ -242,16 +241,15 @@ app.post('/reel', auth, upload.fields([
 
 async function startupSelftest() {
   try {
-    const ppm = Buffer.from(
-      'P3\\n2 2\\n255\\n' +
-      '16 16 20  16 16 20\\n' +
-      '16 16 20  16 16 20\\n'
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAFElEQVR4nGMUEBBhgAEmBiSAmwMACygAPDOMYd8AAAAASUVORK5CYII=',
+      'base64'
     );
 
     const rendered = await render({
-      imageBuffer: ppm,
-      imageName: 'startup-selftest.ppm',
-      imageType: 'image/x-portable-pixmap',
+      imageBuffer: png,
+      imageName: 'startup-selftest.png',
+      imageType: 'image/png',
       audioBuffer: null,
       title: 'FUOCONERO',
       subtitle: 'fuoconero.com',
