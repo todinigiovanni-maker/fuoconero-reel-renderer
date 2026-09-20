@@ -251,7 +251,7 @@ app.get('/demo',async(req,res)=>{
         const data=await r.json();
         if(!r.ok||!data.ok){statusBox.textContent='Errore: '+(data.error||'pubblicazione non riuscita');publishBtn.disabled=false;return;}
         publishId=data.publish_id||'';
-        statusBox.textContent='Upload completato ✓\nPrivacy: '+data.privacy_level+'\nTikTok sta elaborando il video.';
+        statusBox.textContent='Upload completato ✓\\nPrivacy: '+data.privacy_level+'\\nTikTok sta elaborando il video.';
         checkBtn.disabled=!publishId;
         setTimeout(()=>{if(publishId)checkStatus();},2500);
       }catch(e){statusBox.textContent='Errore: '+e.message;publishBtn.disabled=false;}
