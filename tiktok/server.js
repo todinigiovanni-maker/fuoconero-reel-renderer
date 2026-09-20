@@ -100,6 +100,79 @@ async function tiktokJson(path,accessToken,body){
   }
   return data;
 }
+
+async function runAuthorizedPrivateTestOnce(){
+  const testId='sandbox-private-20260920-1';
+  const videoUrl='https://fuoconero-reel-renderer-app-production.up.railway.app/media/63a0e242-f8cb-4d55-8c5e-ac2da4a3e62b.mp4';
+  const title='FUOCONERO — test integrazione privata';
+  const marker='/data/tiktok-test-'+crypto.createHash('sha256').update(testId).digest('hex').slice(0,16)+'.json';
+
+  try{
+    const existing=JSON.parse(await fs.readFile(marker,'utf8'));
+    console.log('TIKTOK_PRIVATE_TEST_SKIP '+JSON.stringify(existing));
+    return;
+  }catch{}
+
+  try{
+    const {access_token}=await getAccessToken();
+    const creator=(await tiktokJson('/v2/post/publish/creator_info/query/',access_token,{})).data||{};
+    const options=Array.isArray(creator.privacy_level_options)?creator.privacy_level_options:[];
+    if(!options.includes('SELF_ONLY')) throw new Error('SELF_ONLY non disponibile nel Sandbox');
+
+    const v=await fetch(videoUrl,{signal:AbortSignal.timeout(120000)});
+    if(!v.ok) throw new Error('Download video HTTP '+v.status);
+    const bytes=Buffer.from(await v.arrayBuffer());
+    if(!bytes.length) throw new Error('Video vuoto');
+
+    const init=await tiktokJson('/v2/post/publish/video/init/',access_token,{
+      post_info:{
+        title,
+        privacy_level:'SELF_ONLY',
+        disable_duet:true,
+        disable_comment:true,
+        disable_stitch:true,
+        video_cover_timestamp_ms:1000
+      },
+      source_info:{
+        source:'FILE_UPLOAD',
+        video_size:bytes.length,
+        chunk_size:bytes.length,
+        total_chunk_count:1
+      }
+    });
+
+    const publishId=init.data?.publish_id;
+    const uploadUrl=init.data?.upload_url;
+    if(!publishId||!uploadUrl) throw new Error('TikTok non ha restituito publish_id/upload_url');
+
+    const up=await fetch(uploadUrl,{
+      method:'PUT',
+      headers:{
+        'Content-Type':'video/mp4',
+        'Content-Length':String(bytes.length),
+        'Content-Range':'bytes 0-'+(bytes.length-1)+'/'+bytes.length
+      },
+      body:bytes,
+      signal:AbortSignal.timeout(180000)
+    });
+    if(!up.ok) throw new Error('TikTok upload HTTP '+up.status+': '+(await up.text()).slice(-1000));
+
+    await new Promise(resolve=>setTimeout(resolve,2500));
+    let status=null;
+    try{
+      status=(await tiktokJson('/v2/post/publish/status/fetch/',access_token,{publish_id:publishId})).data||null;
+    }catch(statusError){
+      status={check_error:statusError instanceof Error?statusError.message:String(statusError)};
+    }
+
+    const result={ok:true,testId,publish_id:publishId,privacy_level:'SELF_ONLY',bytes:bytes.length,uploaded:true,status};
+    await fs.writeFile(marker,JSON.stringify(result),'utf8');
+    console.log('TIKTOK_PRIVATE_TEST_OK '+JSON.stringify(result));
+  }catch(e){
+    console.error('TIKTOK_PRIVATE_TEST_FAILED '+(e instanceof Error?e.message:String(e)));
+  }
+}
+
 function bridgeAuth(req,res,next){
   const auth=req.get('authorization')||'';
   if(!BRIDGE_SECRET||auth!=='Bearer '+BRIDGE_SECRET) return res.status(401).json({ok:false,error:'Non autorizzato'});
@@ -254,4 +327,4 @@ app.post('/publish-status',bridgeAuth,async(req,res)=>{
   }
 });
 
-app.listen(PORT,()=>console.log('fuoconero tiktok bridge listening on '+PORT));
+app.listen(PORT,()=>{\n  console.log('fuoconero tiktok bridge listening on '+PORT);\n  setTimeout(()=>{ runAuthorizedPrivateTestOnce().catch(e=>console.error('TIKTOK_PRIVATE_TEST_UNHANDLED '+(e instanceof Error?e.message:String(e)))); },1500);\n});
