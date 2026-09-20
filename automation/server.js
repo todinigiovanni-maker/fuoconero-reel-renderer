@@ -513,13 +513,6 @@ async function startupSelftest() {
 app.listen(PORT, () => {
   console.log('fuoconero automation listening on ' + PORT);
   startupSelftest();
-  if (PUBLISH_PIN) {
-    fetch(SOCIAL_BRIDGE_URL + '/status', {
-      headers: { 'X-Publish-Pin': PUBLISH_PIN },
-      signal: AbortSignal.timeout(60000)
-    })
-      .then(async (r) => console.log('FB_REFRESH_TEST ' + r.status + ' ' + (await r.text()).slice(0,2500)))
-      .catch((e) => console.error('FB_REFRESH_TEST_FAILED ' + (e instanceof Error ? e.message : String(e))));
-  }
+
 
 });
