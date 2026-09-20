@@ -522,7 +522,7 @@ app.listen(PORT, () => {
   if (PUBLISH_PIN) {
     (async () => {
       const videoUrl = 'https://d2jqrm6oza8nb6.cloudfront.net/datasets/11d9d99a-6556-4986-95a7-b2f5309b44f8.mp4?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiNmYxODQyODE3M2MxYTAzMSIsImJ1Y2tldCI6InJ1bndheS1kYXRhc2V0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc5MDA3NTI2NX0.bxgGb3lho96aeK8eb5odbXbBWv0DQ8yHK2_g_c_rfXo';
-      const caption = 'PRURITI — Quando imparare significa modificare la carne.\\n\\nImparare non significa soltanto sapere qualcosa in più. Significa cambiare fisicamente il cervello. I ricordi non stanno dentro un archivio. In parte, sono l\\'archivio.\\n\\nLeggi l\\'articolo completo su fuoconero.com\\n\\n#Fuoconero #Pruriti #Poesie #Neuroscienze #Scrittura';
+      const caption = `PRURITI — Quando imparare significa modificare la carne.\n\nImparare non significa soltanto sapere qualcosa in più. Significa cambiare fisicamente il cervello. I ricordi non stanno dentro un archivio. In parte, sono l'archivio.\n\nLeggi l'articolo completo su fuoconero.com\n\n#Fuoconero #Pruriti #Poesie #Neuroscienze #Scrittura`;
       try {
         const results = await publishRendered({
           videoUrl,
