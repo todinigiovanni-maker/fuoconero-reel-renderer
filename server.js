@@ -11,6 +11,7 @@ const PORT = process.env.PORT || 8080;
 const SECRET = process.env.RENDERER_SECRET || '';
 const PUBLIC_DIR = '/tmp/public-media';
 const PUBLIC_TTL_MS = 15 * 60 * 1000;
+const PUBLIC_BASE_URL = 'https://fuoconero-reel-renderer-app-production.up.railway.app';
 
 app.get('/health', (_req,res)=>res.json({ok:true, service:'fuoconero-reel-renderer'}));
 
@@ -49,7 +50,7 @@ async function exposeVideo(out, req){
   if(out!==target) await fs.rename(out,target);
   const timer=setTimeout(()=>{ fs.unlink(target).catch(()=>{}); },PUBLIC_TTL_MS);
   if(typeof timer.unref==='function') timer.unref();
-  return `${req.protocol}://${req.get('host')}/media/${encodeURIComponent(name)}`;
+  return `${PUBLIC_BASE_URL}/media/${encodeURIComponent(name)}`;
 }
 
 app.get('/media/:name', async (req,res)=>{
