@@ -298,7 +298,7 @@ app.get('/selftest', async (_req, res) => {
       height: rendered.height || 1920,
       codec: rendered.codec || 'h264',
       published: false,
-      version: '1.0.1'
+      version: '1.1.0'
     });
   } catch (error) {
     return res.status(502).json({
@@ -461,6 +461,48 @@ async function startupSelftest() {
         codec: rendered.codec || 'h264'
       })
     );
+
+    try {
+      const article = await parseArticle(
+        'https://fuoconero.com/2026/09/14/pruriti-quando-imparare-significa-modificare-la-carne/'
+      );
+      const plan = buildReelPlan(article, {
+        title: 'PRURITI',
+        subtitle: 'Quando imparare significa modificare la carne',
+        hook: 'Imparare non significa soltanto sapere qualcosa in più.',
+        keyPoint: 'Significa cambiare fisicamente il cervello.',
+        highlight: 'I ricordi non stanno dentro un archivio. In parte, sono l’archivio.',
+        close: 'E certi pruriti spariscono solo quando li scriviamo.',
+        cta: 'Leggi l’articolo completo su fuoconero.com'
+      });
+      const blogRendered = await renderBlog({
+        article,
+        plan,
+        voiceUrl: '',
+        musicUrl: '',
+        duration: 17
+      });
+      const blogVideo = await fetch(blogRendered.video_url, {
+        signal: AbortSignal.timeout(120000)
+      });
+      if (!blogVideo.ok) throw new Error('Blog public video HTTP ' + blogVideo.status);
+      const blogBytes = await blogVideo.arrayBuffer();
+      console.log(
+        'BLOG_SELFTEST_OK ' +
+        JSON.stringify({
+          title: article.title,
+          category: article.category,
+          hasImage: Boolean(article.image),
+          videoUrl: blogRendered.video_url,
+          bytes: blogBytes.byteLength,
+          width: blogRendered.width || 1080,
+          height: blogRendered.height || 1920,
+          published: false
+        })
+      );
+    } catch (blogError) {
+      console.error('BLOG_SELFTEST_FAILED ' + detail(blogError));
+    }
   } catch (error) {
     console.error('AUTOMATION_SELFTEST_FAILED ' + detail(error));
   }
