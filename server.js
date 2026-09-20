@@ -24,7 +24,12 @@ function run(cmd,args){
     const p=spawn(cmd,args); let err='';
     p.stderr.on('data',d=>err+=d.toString());
     p.on('error',reject);
-    p.on('close',code=>code===0?resolve():reject(new Error(err.slice(-4000)||`${cmd} exit ${code}`)));
+    p.on('close',code=>{
+      if(code===0) return resolve();
+      const tail=(err||'').split('\\n').slice(-35).filter(Boolean);
+      for(const line of tail) console.error('FFMPEG_TAIL '+line.slice(0,1200));
+      reject(new Error(err.slice(-4000)||`${cmd} exit ${code}`));
+    });
   });
 }
 function esc(s=''){return s.replace(/\\/g,'\\\\').replace(/:/g,'\\:').replace(/'/g,"\\'").replace(/%/g,'\\%');}
