@@ -327,4 +327,7 @@ app.post('/publish-status',bridgeAuth,async(req,res)=>{
   }
 });
 
-app.listen(PORT,()=>{\n  console.log('fuoconero tiktok bridge listening on '+PORT);\n  setTimeout(()=>{ runAuthorizedPrivateTestOnce().catch(e=>console.error('TIKTOK_PRIVATE_TEST_UNHANDLED '+(e instanceof Error?e.message:String(e)))); },1500);\n});
+app.listen(PORT,()=>{
+  console.log('fuoconero tiktok bridge listening on '+PORT);
+  setTimeout(()=>{ runAuthorizedPrivateTestOnce().catch(e=>console.error('TIKTOK_PRIVATE_TEST_UNHANDLED '+(e instanceof Error?e.message:String(e)))); },1500);
+});
