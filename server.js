@@ -26,17 +26,17 @@ function run(cmd,args){
 }
 function esc(s=''){return s.replace(/\\/g,'\\\\').replace(/:/g,'\\:').replace(/'/g,"\\'").replace(/%/g,'\\%');}
 
-// Temporary end-to-end FFmpeg self-test. Returns metadata only, never publishes anything.
+// Minimal FFmpeg smoke test: tiny video first, then we scale up.
 app.get('/selftest', async (_req,res)=>{
   const id=crypto.randomUUID(); const out='/tmp/selftest-'+id+'.mp4';
   try{
-    await run('ffmpeg',['-y','-f','lavfi','-i','color=c=0x101014:s=1080x1920:r=30','-vf',"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='FUOCONERO':fontcolor=white:fontsize=72:x=(w-text_w)/2:y=(h-text_h)/2",'-frames:v','1','-c:v','libx264','-preset','ultrafast','-threads','1','-crf','32','-pix_fmt','yuv420p','-movflags','+faststart',out]);
+    await run('ffmpeg',['-y','-f','lavfi','-i','color=c=black:s=360x640:r=15','-t','1','-c:v','libx264','-preset','ultrafast','-pix_fmt','yuv420p','-movflags','+faststart',out]);
     const st=await fs.stat(out);
     await fs.unlink(out);
-    res.json({ok:true,rendered:true,width:1080,height:1920,duration:'1-frame',bytes:st.size,codec:'h264',pixelFormat:'yuv420p'});
+    res.json({ok:true,rendered:true,width:360,height:640,duration:1,bytes:st.size,codec:'h264',stage:'minimal'});
   }catch(e){
     await Promise.allSettled([fs.unlink(out)]);
-    console.error('selftest failed', e); res.status(500).json({ok:false,error:e instanceof Error?e.message:'Errore self-test'});
+    res.status(500).json({ok:false,error:e instanceof Error?e.message:'Errore self-test'});
   }
 });
 
