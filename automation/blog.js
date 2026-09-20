@@ -19,7 +19,9 @@ function htmlText(value='') {
 }
 
 function cleanTitle(s='') {
-  return htmlText(s).replace(/\s*[|–-]\s*Momenti che diventano parole\s*$/i,'').trim();
+  return htmlText(s)
+    .replace(/\s*[|–-]\s*Momenti che diventano parole\s*$/i,'')
+    .trim();
 }
 
 function splitSentences(text='') {
@@ -38,7 +40,9 @@ function short(s,max=150) {
 
 function urlSlug(articleUrl) {
   const u=new URL(articleUrl);
-  if(!/(^|\.)fuoconero\.com$/i.test(u.hostname)) throw new Error('URL non appartenente a fuoconero.com');
+  if(!/(^|\.)fuoconero\.com$/i.test(u.hostname)) {
+    throw new Error('URL non appartenente a fuoconero.com');
+  }
   const parts=u.pathname.split('/').filter(Boolean);
   const slug=parts.at(-1);
   if(!slug) throw new Error('Slug articolo mancante');
@@ -46,51 +50,84 @@ function urlSlug(articleUrl) {
 }
 
 async function fetchJson(url,timeout=25000) {
-  const r=await fetch(url,{headers:{'User-Agent':'FuoconeroAutomation/1.1'},signal:AbortSignal.timeout(timeout)});
+  const r=await fetch(url,{
+    headers:{'User-Agent':'FuoconeroAutomation/1.1'},
+    signal:AbortSignal.timeout(timeout)
+  });
   if(!r.ok) throw new Error('HTTP '+r.status+' su '+url);
   const text=await r.text();
-  try { return JSON.parse(text); }
-  catch { throw new Error('Risposta WordPress non JSON'); }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error('Risposta WordPress non JSON');
+  }
 }
 
 async function fetchText(url,timeout=25000) {
-  const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0 FuoconeroAutomation/1.1'},signal:AbortSignal.timeout(timeout)});
+  const r=await fetch(url,{
+    headers:{'User-Agent':'Mozilla/5.0 FuoconeroAutomation/1.1'},
+    signal:AbortSignal.timeout(timeout)
+  });
   if(!r.ok) throw new Error('HTTP '+r.status+' su '+url);
   return r.text();
 }
 
-function escapeRegex(s='') {
-  return String(s).replace(/[.*+?^$(){}|[\]\\]/g,'\\async function fetchJson(url,timeout=25000) {
-  const r=await fetch(url,{headers:{'User-Agent':'FuoconeroAutomation/1.1'},signal:AbortSignal.timeout(timeout)});
-  if(!r.ok) throw new Error('HTTP '+r.status+' su '+url);
-  return r.json();
-}
-');
+function parseAttrs(tag='') {
+  const attrs={};
+  const re=/([a-zA-Z_:.-]+)\s*=\s*(["'])(.*?)\2/g;
+  let m;
+  while((m=re.exec(tag))) {
+    attrs[m[1].toLowerCase()]=m[3];
+  }
+  return attrs;
 }
 
-function metaContent(html,key,attr='property') {
-  const k=escapeRegex(key);
-  const a=escapeRegex(attr);
-  const re1=new RegExp('<meta[^>]*'+a+'=["\\\']'+k+'["\\\'][^>]*content=["\\\']([^"\\\']*)["\\\'][^>]*>','i');
-  const re2=new RegExp('<meta[^>]*content=["\\\']([^"\\\']*)["\\\'][^>]*'+a+'=["\\\']'+k+'["\\\'][^>]*>','i');
-  return htmlText((html.match(re1)||html.match(re2)||[])[1]||'');
+function getMeta(html,key,attr='property') {
+  const targetKey=String(key).toLowerCase();
+  const targetAttr=String(attr).toLowerCase();
+  const tags=html.match(/<meta\b[^>]*>/gi)||[];
+  for(const tag of tags) {
+    const attrs=parseAttrs(tag);
+    if(String(attrs[targetAttr]||'').toLowerCase()===targetKey && attrs.content) {
+      return htmlText(attrs.content);
+    }
+  }
+  return '';
 }
 
 function parseHtmlArticle(html,url,slug) {
   const articleMatch=html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i);
   const mainMatch=html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i);
   const body=articleMatch?.[1]||mainMatch?.[1]||html;
-  const h1=body.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i);
-  const categoryMatches=[...html.matchAll(/<a[^>]+rel=["'][^"']*category[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi)];
-  const category=categoryMatches.map(m=>htmlText(m[1])).find(Boolean)||metaContent(html,'article:section')||'FUOCONERO';
-  const title=cleanTitle(metaContent(html,'og:title')||htmlText(h1?.[1]||slug.replace(/-/g,' ')));
-  const image=metaContent(html,'og:image')||metaContent(html,'twitter:image','name');
-  const excerpt=metaContent(html,'description','name')||metaContent(html,'og:description');
+  const h1=body.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1]||'';
+
+  const categoryMatch=
+    html.match(/<a[^>]+rel=["'][^"']*category[^"']*["'][^>]*>([\s\S]*?)<\/a>/i)?.[1]||'';
+
+  const title=cleanTitle(
+    getMeta(html,'og:title')||
+    htmlText(h1)||
+    slug.replace(/-/g,' ')
+  );
+
+  const image=
+    getMeta(html,'og:image')||
+    getMeta(html,'twitter:image','name');
+
+  const excerpt=
+    getMeta(html,'description','name')||
+    getMeta(html,'og:description');
+
+  const category=
+    htmlText(categoryMatch)||
+    getMeta(html,'article:section')||
+    'FUOCONERO';
+
   return {
     id:null,
     url,
     slug,
-    date:metaContent(html,'article:published_time')||null,
+    date:getMeta(html,'article:published_time')||null,
     title,
     categories:[category],
     category,
@@ -102,7 +139,10 @@ function parseHtmlArticle(html,url,slug) {
 }
 
 export async function fetchBuffer(url,timeout=45000) {
-  const r=await fetch(url,{headers:{'User-Agent':'FuoconeroAutomation/1.1'},signal:AbortSignal.timeout(timeout)});
+  const r=await fetch(url,{
+    headers:{'User-Agent':'FuoconeroAutomation/1.1'},
+    signal:AbortSignal.timeout(timeout)
+  });
   if(!r.ok) throw new Error('HTTP '+r.status+' scaricando asset');
   const type=r.headers.get('content-type')||'application/octet-stream';
   return {
@@ -114,18 +154,31 @@ export async function fetchBuffer(url,timeout=45000) {
 
 export async function parseArticle(articleUrl) {
   const {url,slug}=urlSlug(articleUrl);
-  const api='https://fuoconero.com/wp-json/wp/v2/posts?slug='+encodeURIComponent(slug)+'&_embed=1';
+  const api=
+    'https://fuoconero.com/wp-json/wp/v2/posts?slug='+
+    encodeURIComponent(slug)+
+    '&_embed=1';
 
   try {
     const posts=await fetchJson(api);
-    if(!Array.isArray(posts)||!posts[0]) throw new Error('Articolo non trovato via WordPress REST API');
+    if(!Array.isArray(posts)||!posts[0]) {
+      throw new Error('Articolo non trovato via WordPress REST API');
+    }
+
     const p=posts[0];
     const terms=p?._embedded?.['wp:term']?.flat?.()||[];
-    const categories=terms.filter(t=>t?.taxonomy==='category').map(t=>htmlText(t.name)).filter(Boolean);
+    const categories=terms
+      .filter(t=>t?.taxonomy==='category')
+      .map(t=>htmlText(t.name))
+      .filter(Boolean);
+
     const featured=p?._embedded?.['wp:featuredmedia']?.[0];
-    const image=featured?.source_url||
+    const image=
+      featured?.source_url||
       featured?.media_details?.sizes?.full?.source_url||
-      featured?.media_details?.sizes?.large?.source_url||'';
+      featured?.media_details?.sizes?.large?.source_url||
+      '';
+
     return {
       id:p.id,
       url:p.link||url,
@@ -139,40 +192,86 @@ export async function parseArticle(articleUrl) {
       excerpt:htmlText(p?.excerpt?.rendered||''),
       content:htmlText(p?.content?.rendered||'')
     };
-  } catch (restError) {
+  } catch {
     const html=await fetchText(url);
     const parsed=parseHtmlArticle(html,url,slug);
     if(!parsed.title||!parsed.content) {
-      throw new Error('Impossibile estrarre articolo dal sito: '+String(restError?.message||restError));
+      throw new Error('Impossibile estrarre articolo dal sito');
     }
     return parsed;
   }
 }
 
 export function buildReelPlan(article,override={}) {
-  const source=(article.excerpt&&article.excerpt.length>70?article.excerpt:article.content).trim();
+  const source=(
+    article.excerpt&&article.excerpt.length>70
+      ? article.excerpt
+      : article.content
+  ).trim();
+
   const sentences=splitSentences(source);
   const title=override.title||article.title;
-  const subtitle=override.subtitle||(title.includes('—')?title.split('—').slice(1).join('—').trim():'Momenti che diventano parole');
-  const hook=override.hook||short(sentences[0]||article.excerpt||article.content,130);
-  const keyPoint=override.keyPoint||short(sentences[1]||sentences[0]||'',135);
-  const highlight=override.highlight||short(
-    sentences.find(s=>/ricord|cervell|archiv|cambia|vita|mondo|anim|natura|fisic/i.test(s))||
-    sentences[2]||keyPoint,155
-  );
-  const close=override.close||short(sentences.at(-1)||highlight,145);
-  const cta=override.cta||'Leggi l’articolo completo su fuoconero.com';
-  const voiceover=override.voiceover||[hook,keyPoint,highlight,close].filter(Boolean).join(' ');
-  const caption=override.caption||(hook+'\n\nLeggi l’articolo completo su fuoconero.com');
-  const hashtags=override.hashtags||[
-    'Fuoconero',
-    article.category.replace(/[^\p{L}\p{N}]/gu,''),
-    'Blog',
-    'Reel'
-  ].filter(Boolean);
+  const subtitle=
+    override.subtitle||
+    (
+      title.includes('—')
+        ? title.split('—').slice(1).join('—').trim()
+        : 'Momenti che diventano parole'
+    );
+
+  const hook=
+    override.hook||
+    short(sentences[0]||article.excerpt||article.content,130);
+
+  const keyPoint=
+    override.keyPoint||
+    short(sentences[1]||sentences[0]||'',135);
+
+  const highlight=
+    override.highlight||
+    short(
+      sentences.find(
+        s=>/ricord|cervell|archiv|cambia|vita|mondo|anim|natura|fisic/i.test(s)
+      )||
+      sentences[2]||
+      keyPoint,
+      155
+    );
+
+  const close=
+    override.close||
+    short(sentences.at(-1)||highlight,145);
+
+  const cta=
+    override.cta||
+    'Leggi l’articolo completo su fuoconero.com';
+
+  const voiceover=
+    override.voiceover||
+    [hook,keyPoint,highlight,close].filter(Boolean).join(' ');
+
+  const caption=
+    override.caption||
+    (hook+'\n\nLeggi l’articolo completo su fuoconero.com');
+
+  const hashtags=
+    override.hashtags||
+    [
+      'Fuoconero',
+      article.category.replace(/[^\p{L}\p{N}]/gu,''),
+      'Blog',
+      'Reel'
+    ].filter(Boolean);
+
   return {
     category:override.category||article.category,
-    title,subtitle,hook,keyPoint,highlight,close,cta,
+    title,
+    subtitle,
+    hook,
+    keyPoint,
+    highlight,
+    close,
+    cta,
     voiceover:short(voiceover,430),
     caption,
     hashtags
