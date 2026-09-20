@@ -56,7 +56,11 @@ async function render({ imageBuffer, imageName, imageType, audioBuffer, audioNam
 
   const payload = await response.json();
   if (!response.ok || !payload?.ok || !payload?.video_url) {
-    throw new Error('Renderer HTTP ' + response.status + ': ' + JSON.stringify(payload).slice(0, 500));
+    const rendererError =
+      typeof payload?.error === 'string'
+        ? payload.error.slice(-1800)
+        : JSON.stringify(payload).slice(-1800);
+    throw new Error('Renderer HTTP ' + response.status + ': ' + rendererError);
   }
   return payload;
 }
