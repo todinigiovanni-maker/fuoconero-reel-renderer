@@ -269,12 +269,16 @@ app.post('/render-blog-url', auth, upload.fields([
     if(audioMap) args.push('-c:a','aac','-b:a','96k'); else args.push('-an');
     args.push('-movflags','+faststart',pass1);
 
+    console.log('BLOG_RENDER_STAGE pass1_start');
     await run('ffmpeg',args);
+    console.log('BLOG_RENDER_STAGE pass1_ok');
 
     const up=['-y','-i',pass1,'-vf','scale=1080:1920:flags=lanczos','-c:v','libx264','-preset','ultrafast','-threads','1','-crf','22','-pix_fmt','yuv420p'];
     if(audioMap) up.push('-c:a','copy'); else up.push('-an');
     up.push('-movflags','+faststart',out);
+    console.log('BLOG_RENDER_STAGE upsample_start');
     await run('ffmpeg',up);
+    console.log('BLOG_RENDER_STAGE upsample_ok');
 
     const st=await fs.stat(out), videoUrl=await exposeVideo(out,req);
     await Promise.allSettled([
