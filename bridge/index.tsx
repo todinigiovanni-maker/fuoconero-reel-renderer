@@ -549,6 +549,74 @@ app.post("/youtube/auto-upload", async (c) => {
   }
 });
 
+
+const PRURITI_ONE_SHOT_FILE = "/data/pruriti-social-test-20260920.json";
+
+async function savePruritiState(state: any) {
+  await Bun.write(PRURITI_ONE_SHOT_FILE, JSON.stringify(state, null, 2));
+}
+
+app.post("/internal/pruriti-social-test", async (c) => {
+  if (!checkPin(String(c.req.header("X-Publish-Pin") || ""))) {
+    return c.json({ ok: false, error: "Non autorizzato" }, 401);
+  }
+
+  const videoUrl = "https://d2jqrm6oza8nb6.cloudfront.net/datasets/11d9d99a-6556-4986-95a7-b2f5309b44f8.mp4?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiNmYxODQyODE3M2MxYTAzMSIsImJ1Y2tldCI6InJ1bndheS1kYXRhc2V0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc5MDA3NTI2NX0.bxgGb3lho96aeK8eb5odbXbBWv0DQ8yHK2_g_c_rfXo";
+  const caption = "PRURITI — Quando imparare significa modificare la carne.\n\nImparare non significa soltanto sapere qualcosa in più. Significa cambiare fisicamente il cervello. I ricordi non stanno dentro un archivio. In parte, sono l'archivio.\n\nLeggi l'articolo completo su fuoconero.com\n\n#Fuoconero #Pruriti #Poesie #Neuroscienze #Scrittura";
+  let state: any = { id: "pruriti-20260920", videoUrl, createdAt: new Date().toISOString(), instagram: null, facebook: null, youtube: null };
+
+  const stateFile = Bun.file(PRURITI_ONE_SHOT_FILE);
+  if (await stateFile.exists()) {
+    try { state = await stateFile.json(); } catch {}
+  }
+
+  async function runPlatform(name: "instagram" | "facebook" | "youtube", fn: () => Promise<any>) {
+    const current = state[name];
+    if (current?.status === "done") return;
+    if (current?.status === "in_progress") return;
+    state[name] = { status: "in_progress", startedAt: new Date().toISOString() };
+    await savePruritiState(state);
+    try {
+      const result = await fn();
+      state[name] = { status: result.success === false ? "failed" : "done", ...result, finishedAt: new Date().toISOString() };
+    } catch (e) {
+      state[name] = { status: "failed", error: safeError(e), finishedAt: new Date().toISOString() };
+    }
+    await savePruritiState(state);
+  }
+
+  await runPlatform("instagram", async () => {
+    const r = await publishToInstagram(videoUrl, caption, true);
+    return r.success ? { success: true, mediaId: r.mediaId } : { success: false, error: r.error };
+  });
+
+  await runPlatform("facebook", async () => {
+    const r = await publishToFacebook(videoUrl, caption);
+    return r.success ? { success: true, mediaId: r.mediaId } : { success: false, error: r.error };
+  });
+
+  await runPlatform("youtube", async () => {
+    const media = await fetchVideo(videoUrl);
+    const uploaded = await uploadYoutubeBytes(
+      media.bytes,
+      media.contentType,
+      "PRURITI | Fuoconero",
+      caption,
+      ["Fuoconero","Pruriti","Poesie","Neuroscienze","Scrittura"],
+      "public"
+    );
+    return { success: true, videoId: uploaded.id, url: "https://www.youtube.com/watch?v=" + uploaded.id, privacyStatus: "public" };
+  });
+
+  const ok = ["instagram","facebook","youtube"].every((k) => state[k]?.status === "done");
+  return c.json({
+    ok,
+    instagram: state.instagram,
+    facebook: state.facebook,
+    youtube: state.youtube
+  });
+});
+
 app.get("/youtube/test", (c) => c.html(`<!doctype html>
 <html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Fuoconero · YouTube test</title><style>body{font-family:system-ui;background:#111;color:#eee;padding:24px}main{max-width:620px;margin:auto}input,textarea,button{width:100%;box-sizing:border-box;margin:8px 0;padding:12px}</style></head>
