@@ -1,7 +1,7 @@
 {
   "type": "module",
   "scripts": {
-    "start": "node -e \"if(process.env.RUN_SOCIAL_ONCE!=='1')process.exit(0);const u='https://fuoconero-automation-production.up.railway.app/blog-reel';const b={url:'https://fuoconero.com/2026/09/18/fisicamente-hanno-teletrasportato-unimmagine-ma-la-vera-notizia-non-e-quella/',publish:true,confirmed:true,platform:'both',youtube:true,tiktok:false};fetch(u,{method:'POST',headers:{'content-type':'application/json','authorization':'Bearer '+process.env.AUTOMATION_SECRET},body:JSON.stringify(b)}).then(async r=>{const t=await r.text();console.log('FUOCONERO_PUBLISH_STATUS='+r.status);console.log('FUOCONERO_PUBLISH_BODY='+t);if(!r.ok)process.exit(1)}).catch(e=>{console.error('FUOCONERO_PUBLISH_ERROR='+e.message);process.exit(1)})\" && node server.js"
+    "start": "node publish-once.js && node server.js"
   },
   "dependencies": {
     "express": "^5.1.0",
