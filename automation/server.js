@@ -80,12 +80,14 @@ async function renderBlog({ article, plan, voiceUrl, musicUrl, duration = 17 }) 
 
   const image = await fetchBuffer(article.image);
   const voice = voiceUrl ? await fetchBuffer(voiceUrl) : null;
-  const music = musicUrl ? await fetchBuffer(musicUrl) : null;
+  const isYoutubeMusic = Boolean(musicUrl && /^https:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\//i.test(musicUrl));
+  const music = musicUrl && !isYoutubeMusic ? await fetchBuffer(musicUrl) : null;
 
   const form = new FormData();
   form.append('image', new File([image.buffer], image.name, { type: image.type }));
   if (voice) form.append('voice', new File([voice.buffer], voice.name, { type: voice.type }));
   if (music) form.append('music', new File([music.buffer], music.name, { type: music.type }));
+  if (isYoutubeMusic) form.append('musicUrl', musicUrl);
 
   const fields = {
     category: plan.category,
@@ -142,7 +144,8 @@ async function publishRendered({ videoUrl, caption, platform = 'none', youtube =
         video_url: videoUrl,
         title: String(youtubeTitle).slice(0, 100),
         description: youtubeDescription || caption,
-        tags: youtubeTags
+        tags: youtubeTags,
+        privacy_status: 'public'
       }),
       signal: AbortSignal.timeout(300000)
     });
