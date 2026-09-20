@@ -10,7 +10,7 @@ const upload = multer({ dest: '/tmp/uploads', limits: { fileSize: 40 * 1024 * 10
 const PORT = process.env.PORT || 8080;
 const SECRET = process.env.RENDERER_SECRET || '';
 const PUBLIC_DIR = '/tmp/public-media';
-const PUBLIC_TTL_MS = 15 * 60 * 1000;
+const PUBLIC_TTL_MS = 60 * 60 * 1000;
 const PUBLIC_BASE_URL = 'https://fuoconero-reel-renderer-app-production.up.railway.app';
 
 app.get('/health', (_req,res)=>res.json({ok:true, service:'fuoconero-reel-renderer'}));
@@ -80,7 +80,7 @@ app.get('/pipeline-selftest', async (req,res)=>{
     ]);
     const st=await fs.stat(out);
     const videoUrl=await exposeVideo(out,req);
-    res.json({ok:true,rendered:true,video_url:videoUrl,expires_in_seconds:900,width:1080,height:1920,duration:3,bytes:st.size,codec:'h264',stage:'pipeline'});
+    res.json({ok:true,rendered:true,video_url:videoUrl,expires_in_seconds:3600,width:1080,height:1920,duration:3,bytes:st.size,codec:'h264',stage:'pipeline'});
   }catch(e){
     await Promise.allSettled([fs.unlink(out)]);
     res.status(500).json({ok:false,error:e instanceof Error?e.message:'Errore pipeline self-test'});
@@ -132,7 +132,7 @@ app.post('/render-url', auth, upload.fields([{name:'image',maxCount:1},{name:'au
     const st=await fs.stat(out);
     const videoUrl=await exposeVideo(out,req);
     await Promise.allSettled([fs.unlink(image.path),audio?fs.unlink(audio.path):Promise.resolve()]);
-    res.json({ok:true,rendered:true,video_url:videoUrl,expires_in_seconds:900,bytes:st.size,width:1080,height:1920,codec:'h264'});
+    res.json({ok:true,rendered:true,video_url:videoUrl,expires_in_seconds:3600,bytes:st.size,width:1080,height:1920,codec:'h264'});
   }catch(e){
     await Promise.allSettled([fs.unlink(image.path),audio?fs.unlink(audio.path):Promise.resolve(),fs.unlink(out)]);
     res.status(500).json({ok:false,error:e instanceof Error?e.message:'Errore renderer'});
