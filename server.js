@@ -28,6 +28,25 @@ function run(cmd,args){
   });
 }
 function esc(s=''){return s.replace(/\\/g,'\\\\').replace(/:/g,'\\:').replace(/'/g,"\\'").replace(/%/g,'\\%');}
+function wrapText(value='',max=32){
+  const words=String(value).replace(/\s+/g,' ').trim().split(' ').filter(Boolean);
+  const lines=[];
+  let line='';
+  for(const word of words){
+    const next=line?line+' '+word:word;
+    if(next.length>max&&line){
+      lines.push(line);
+      line=word;
+    }else{
+      line=next;
+    }
+  }
+  if(line) lines.push(line);
+  return lines.slice(0,4).join('\n');
+}
+function escMultiline(value='',max=32){
+  return esc(wrapText(value,max)).replace(/\n/g,'\\n');
+}
 
 // Lightweight FFmpeg smoke test.
 app.get('/selftest', async (_req,res)=>{
