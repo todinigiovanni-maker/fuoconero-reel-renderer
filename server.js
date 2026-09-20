@@ -225,7 +225,7 @@ app.post('/render-blog-url', auth, upload.fields([
       fc+=';['+vi+':a]adelay=1000|1000,volume=1.0[aout]';
       audioMap='[aout]';
     }else if(mi!==null){
-      fc+=';['+mi+':a]volume=0.18,afade=t=in:st=0:d=0.7,afade=t=out:st='+(duration-1.5)+':d=1.5[aout]';
+      fc+=';['+mi+':a]volume=0.32,afade=t=in:st=0:d=0.7,afade=t=out:st='+(duration-1.5)+':d=1.5[aout]';
       audioMap='[aout]';
     }
 
