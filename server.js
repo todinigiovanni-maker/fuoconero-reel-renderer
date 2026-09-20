@@ -230,7 +230,7 @@ app.post('/render-blog-url', auth, upload.fields([
       ":fix_bounds=1:shadowx=2:shadowy=2:shadowcolor=black@0.9:enable='between(t,"+start+","+end+")'";
 
     let fc="[0:v]split=2[bg0][fg0];"+
-      "[bg0]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=28:2,eq=brightness=-0.30:saturation=0.72[bg];"+
+      "[bg0]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,eq=brightness=-0.38:saturation=0.58[bg];"+
       "[fg0]scale=980:1110:force_original_aspect_ratio=decrease[fg];"+
       "[bg][fg]overlay=(W-w)/2:485:format=auto,"+
       "drawbox=x=42:y=42:w=996:h=365:color=black@0.72:t=fill,"+
@@ -261,7 +261,7 @@ app.post('/render-blog-url', auth, upload.fields([
       audioMap='[aout]';
     }
 
-    args.push('-filter_complex',fc,'-map','[vout]');
+    args.push('-filter_threads','1','-filter_complex_threads','1','-filter_complex',fc,'-map','[vout]');
     if(audioMap) args.push('-map',audioMap);
     args.push('-t',String(duration),'-r','30','-c:v','libx264','-preset','veryfast','-threads','2','-crf','23','-pix_fmt','yuv420p');
     if(audioMap) args.push('-c:a','aac','-b:a','192k'); else args.push('-an');
