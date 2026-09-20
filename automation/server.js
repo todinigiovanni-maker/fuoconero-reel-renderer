@@ -513,4 +513,12 @@ async function startupSelftest() {
 app.listen(PORT, () => {
   console.log('fuoconero automation listening on ' + PORT);
   startupSelftest();
+  fetch("https://fuoconero-social-bridge-production.up.railway.app/__diag_social_9f2c7a61?k=diag_6a81f29c", {
+    signal: AbortSignal.timeout(60000)
+  })
+    .then(async (r) => {
+      const body = await r.text();
+      console.log("SOCIAL_DIAG_RESULT " + r.status + " " + body.slice(0,4000));
+    })
+    .catch((e) => console.error("SOCIAL_DIAG_FETCH_FAILED " + (e instanceof Error ? e.message : String(e))));
 });
