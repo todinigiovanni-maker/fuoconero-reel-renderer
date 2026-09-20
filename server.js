@@ -30,7 +30,7 @@ function esc(s=''){return s.replace(/\\/g,'\\\\').replace(/:/g,'\\:').replace(/'
 app.get('/selftest', async (_req,res)=>{
   const id=crypto.randomUUID(); const out='/tmp/selftest-'+id+'.mp4';
   try{
-    await run('ffmpeg',['-y','-f','lavfi','-i','color=c=black:s=360x640:r=15','-t','1','-c:v','libx264','-preset','ultrafast','-pix_fmt','yuv420p','-movflags','+faststart',out]);
+    await run('ffmpeg',['-y','-f','lavfi','-i','color=c=black:s=360x640:r=15','-t','1','-c:v','libx264','-preset','ultrafast','-threads','2','-pix_fmt','yuv420p','-movflags','+faststart',out]);
     const st=await fs.stat(out);
     await fs.unlink(out);
     res.json({ok:true,rendered:true,width:360,height:640,duration:1,bytes:st.size,codec:'h264',stage:'minimal'});
