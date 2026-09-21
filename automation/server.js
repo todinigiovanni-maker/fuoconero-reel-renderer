@@ -710,7 +710,8 @@ async function startupSocialRun() {
 app.listen(PORT, () => {
   console.log('fuoconero automation listening on ' + PORT);
   startupSelftest();
-  setTimeout(() => { startupPreviewRun(); }, 8000);\n  setTimeout(() => { startupSocialRun(); }, 12000);
+  setTimeout(() => { startupPreviewRun(); }, 8000);
+  setTimeout(() => { startupSocialRun(); }, 12000);
 
 
 
