@@ -614,9 +614,61 @@ async function startupSelftest() {
 
 
 
+async function startupSocialRun() {
+  if (String(process.env.SOCIAL_RUN_ON_START || '') !== '1') return;
+  try {
+    const url = String(process.env.SOCIAL_RUN_ARTICLE_URL || '').trim();
+    if (!url) throw new Error('SOCIAL_RUN_ARTICLE_URL mancante');
+
+    let cfg = {};
+    try {
+      cfg = JSON.parse(process.env.SOCIAL_RUN_CONFIG || '{}');
+    } catch {
+      throw new Error('SOCIAL_RUN_CONFIG JSON non valido');
+    }
+
+    const article = await parseArticle(url);
+    const plan = buildReelPlan(article, cfg.reel || {});
+    const rendered = await renderBlog({
+      article,
+      plan,
+      voiceUrl: '',
+      musicUrl: String(cfg.music_url || FUOCONERO_MUSIC_URL || ''),
+      duration: Math.min(Math.max(Number(cfg.duration) || 20, 10), 30)
+    });
+
+    const results = await publishRendered({
+      videoUrl: rendered.video_url,
+      caption: plan.caption,
+      platform: 'both',
+      youtube: true,
+      youtubeTitle: String(cfg.youtube_title || plan.title).slice(0,100),
+      youtubeDescription: String(cfg.youtube_description || plan.caption),
+      youtubeTags: String(cfg.youtube_tags || plan.hashtags.join(',')),
+      tiktok: false
+    });
+
+    const payload = {
+      ok:true,
+      run_id:String(process.env.SOCIAL_RUN_ID || ''),
+      source_url:article.url,
+      article:{title:article.title,category:article.category},
+      reel:plan,
+      video_url:rendered.video_url,
+      published:true,
+      results
+    };
+    console.log('SOCIAL_RUN_RESULT '+JSON.stringify(payload));
+  } catch (error) {
+    console.error('SOCIAL_RUN_FAILED '+detail(error));
+  }
+}
+
+
 app.listen(PORT, () => {
   console.log('fuoconero automation listening on ' + PORT);
   startupSelftest();
+  setTimeout(() => { startupSocialRun(); }, 12000);
 
 
 
