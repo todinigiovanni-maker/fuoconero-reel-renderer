@@ -21,6 +21,7 @@ const TIKTOK_BRIDGE_URL =
 const PUBLISH_PIN = process.env.PUBLISH_PIN || '';
 const AUTOMATION_SECRET = process.env.AUTOMATION_SECRET || '';
 const FUOCONERO_MUSIC_URL = process.env.FUOCONERO_MUSIC_URL || '';
+const SOCIAL_RUN_TOKEN = process.env.SOCIAL_RUN_TOKEN || '';
 
 function detail(error) {
   return error instanceof Error
@@ -308,6 +309,53 @@ app.post('/blog-reel', auth, async (req, res) => {
   }
 });
 
+
+
+app.post('/run-social-once', async (req, res) => {
+  try {
+    if (!SOCIAL_RUN_TOKEN || req.get('x-run-token') !== SOCIAL_RUN_TOKEN) {
+      return res.status(404).json({ ok:false, error:'Not found' });
+    }
+    const url = String(req.body?.url || '').trim();
+    if (!url) return res.status(400).json({ ok:false, error:'url mancante' });
+
+    const article = await parseArticle(url);
+    const plan = buildReelPlan(article, req.body?.reel || {});
+    const rendered = await renderBlog({
+      article,
+      plan,
+      voiceUrl: '',
+      musicUrl: String(req.body?.music_url || FUOCONERO_MUSIC_URL || ''),
+      duration: Math.min(Math.max(Number(req.body?.duration) || 20, 10), 30)
+    });
+
+    const results = await publishRendered({
+      videoUrl: rendered.video_url,
+      caption: plan.caption,
+      platform: 'both',
+      youtube: true,
+      youtubeTitle: String(req.body?.youtube_title || plan.title).slice(0,100),
+      youtubeDescription: String(req.body?.youtube_description || plan.caption),
+      youtubeTags: String(req.body?.youtube_tags || plan.hashtags.join(',')),
+      tiktok: false
+    });
+
+    const payload = {
+      ok:true,
+      source_url:article.url,
+      article:{title:article.title,category:article.category},
+      reel:plan,
+      video_url:rendered.video_url,
+      published:true,
+      results
+    };
+    console.log('SOCIAL_RUN_RESULT '+JSON.stringify(payload));
+    return res.json(payload);
+  } catch (error) {
+    console.error('SOCIAL_RUN_FAILED '+detail(error));
+    return res.status(502).json({ok:false,error:'Social run failed',detail:detail(error)});
+  }
+});
 
 
 app.get('/health', (_req, res) => {
