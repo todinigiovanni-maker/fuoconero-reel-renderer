@@ -692,9 +692,6 @@ async function startupPreviewRun() {
 async function startupSocialRun() {
   if (String(process.env.SOCIAL_RUN_ON_START || '') !== '1') return;
   try {
-    const url = String(process.env.SOCIAL_RUN_ARTICLE_URL || '').trim();
-    if (!url) throw new Error('SOCIAL_RUN_ARTICLE_URL mancante');
-
     let cfg = {};
     try {
       cfg = JSON.parse(process.env.SOCIAL_RUN_CONFIG || '{}');
@@ -702,34 +699,63 @@ async function startupSocialRun() {
       throw new Error('SOCIAL_RUN_CONFIG JSON non valido');
     }
 
-    const article = await parseArticle(url);
-    const plan = buildReelPlan(article, cfg.reel || {});
-    const rendered = await renderBlog({
-      article,
-      plan,
-      voiceUrl: '',
-      musicUrl: String(cfg.music_url || FUOCONERO_MUSIC_URL || ''),
-      duration: Math.min(Math.max(Number(cfg.duration) || 20, 10), 30)
-    });
+    const directVideoUrl = String(cfg.video_url || '').trim();
+    let videoUrl = '';
+    let caption = '';
+    let youtubeTitle = 'FUOCONERO';
+    let youtubeDescription = '';
+    let youtubeTags = '';
+    let sourceUrl = '';
+    let articleInfo = null;
+    let reelInfo = null;
+
+    if (/^https:\/\//i.test(directVideoUrl)) {
+      videoUrl = directVideoUrl;
+      caption = String(cfg.caption || '');
+      youtubeTitle = String(cfg.youtube_title || 'FUOCONERO').slice(0,100);
+      youtubeDescription = String(cfg.youtube_description || caption);
+      youtubeTags = String(cfg.youtube_tags || '');
+      console.log('SOCIAL_RUN_DIRECT_VIDEO ' + JSON.stringify({run_id:String(process.env.SOCIAL_RUN_ID || ''),video_url:videoUrl}));
+    } else {
+      const url = String(process.env.SOCIAL_RUN_ARTICLE_URL || '').trim();
+      if (!url) throw new Error('SOCIAL_RUN_ARTICLE_URL o cfg.video_url mancante');
+      const article = await parseArticle(url);
+      const plan = buildReelPlan(article, cfg.reel || {});
+      const rendered = await renderBlog({
+        article,
+        plan,
+        voiceUrl: '',
+        musicUrl: String(cfg.music_url || FUOCONERO_MUSIC_URL || ''),
+        duration: Math.min(Math.max(Number(cfg.duration) || 20, 10), 30)
+      });
+      videoUrl = rendered.video_url;
+      caption = plan.caption;
+      youtubeTitle = String(cfg.youtube_title || plan.title).slice(0,100);
+      youtubeDescription = String(cfg.youtube_description || plan.caption);
+      youtubeTags = String(cfg.youtube_tags || plan.hashtags.join(','));
+      sourceUrl = article.url;
+      articleInfo = {title:article.title,category:article.category};
+      reelInfo = plan;
+    }
 
     const results = await publishRendered({
-      videoUrl: rendered.video_url,
-      caption: plan.caption,
+      videoUrl,
+      caption,
       platform: 'both',
       youtube: true,
-      youtubeTitle: String(cfg.youtube_title || plan.title).slice(0,100),
-      youtubeDescription: String(cfg.youtube_description || plan.caption),
-      youtubeTags: String(cfg.youtube_tags || plan.hashtags.join(',')),
+      youtubeTitle,
+      youtubeDescription,
+      youtubeTags,
       tiktok: false
     });
 
     const payload = {
       ok:true,
       run_id:String(process.env.SOCIAL_RUN_ID || ''),
-      source_url:article.url,
-      article:{title:article.title,category:article.category},
-      reel:plan,
-      video_url:rendered.video_url,
+      source_url:sourceUrl,
+      article:articleInfo,
+      reel:reelInfo,
+      video_url:videoUrl,
       published:true,
       results
     };
@@ -738,7 +764,6 @@ async function startupSocialRun() {
     console.error('SOCIAL_RUN_FAILED '+detail(error));
   }
 }
-
 
 app.listen(PORT, () => {
   console.log('fuoconero automation listening on ' + PORT);
