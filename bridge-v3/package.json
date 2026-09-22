@@ -1,0 +1,1 @@
+{"name":"fuoconero-social-bridge-v3","version":"1.0.0","private":true,"type":"module","scripts":{"start":"tsx start.ts"},"dependencies":{"hono":"^4.9.0","@hono/node-server":"^1.19.0","tsx":"^4.20.0","typescript":"^5.9.0"}}
