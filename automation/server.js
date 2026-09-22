@@ -215,6 +215,39 @@ app.get('/blog/preview', async (req, res) => {
   }
 });
 
+app.post('/preview-reel', async (req, res) => {
+  try {
+    const url = String(req.body?.url || '').trim();
+    if (!/^https:\/\/fuoconero\.com\//i.test(url)) {
+      return res.status(400).json({ ok:false, error:'Sono ammessi solo articoli fuoconero.com' });
+    }
+
+    const article = await parseArticle(url);
+    const plan = buildReelPlan(article, req.body?.reel || {});
+    const rendered = await renderBlog({
+      article,
+      plan,
+      voiceUrl: '',
+      musicUrl: String(req.body?.music_url || FUOCONERO_MUSIC_URL || ''),
+      duration: Math.min(Math.max(Number(req.body?.duration) || 20, 10), 30)
+    });
+
+    return res.json({
+      ok:true,
+      source_url:article.url,
+      article:{title:article.title,category:article.category,image:article.image},
+      reel:plan,
+      video_url:rendered.video_url,
+      expires_in_seconds:rendered.expires_in_seconds || 3600,
+      audio:rendered.audio || {},
+      published:false,
+      preview_only:true
+    });
+  } catch (error) {
+    return res.status(502).json({ok:false,stage:'preview-reel',error:'Preview reel failed',detail:detail(error)});
+  }
+});
+
 app.post('/publish-existing', auth, async (req, res) => {
   try {
     const videoUrl = String(req.body?.video_url || req.body?.videoUrl || '').trim();
