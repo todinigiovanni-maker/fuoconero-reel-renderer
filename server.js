@@ -79,6 +79,23 @@ async function exposeVideo(out, req){
   return `${PUBLIC_BASE_URL}/media/${encodeURIComponent(name)}`;
 }
 
+app.post('/upload-media', auth, upload.single('video'), async (req,res)=>{
+  const video=req.file;
+  if(!video) return res.status(400).json({ok:false,error:'video richiesto'});
+  await fs.mkdir(PUBLIC_DIR,{recursive:true});
+  const name=crypto.randomUUID()+'.mp4';
+  const out=path.join(PUBLIC_DIR,name);
+  try{
+    await fs.rename(video.path,out);
+    const timer=setTimeout(()=>{ fs.unlink(out).catch(()=>{}); },PUBLIC_TTL_MS);
+    if(typeof timer.unref==='function') timer.unref();
+    return res.json({ok:true,url:`${PUBLIC_BASE_URL}/media/${encodeURIComponent(name)}`});
+  }catch(e){
+    await fs.unlink(video.path).catch(()=>{});
+    return res.status(500).json({ok:false,error:e instanceof Error?e.message:'Errore upload'});
+  }
+});
+
 app.get('/media/:name', async (req,res)=>{
   const name=path.basename(req.params.name||'');
   if(!/^[a-f0-9-]+\.mp4$/i.test(name)) return res.status(400).json({ok:false,error:'Nome file non valido'});
