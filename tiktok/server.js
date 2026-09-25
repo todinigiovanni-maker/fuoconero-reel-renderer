@@ -373,18 +373,20 @@ const PANEL_RENDERER_URL=process.env.PANEL_RENDERER_URL||'https://fuoconero-reel
 const PANEL_RENDERER_SECRET=process.env.PANEL_RENDERER_SECRET||'';
 const PANEL_AUTOMATION_URL=process.env.PANEL_AUTOMATION_URL||'https://fuoconero-automation-production.up.railway.app';
 const PANEL_AUTOMATION_SECRET=process.env.PANEL_AUTOMATION_SECRET||'';
+const PANEL_SOCIAL_URL=process.env.PANEL_SOCIAL_URL||'https://fuoconero-social-bridge-production.up.railway.app';
+const PANEL_SOCIAL_SECRET=process.env.PANEL_SOCIAL_SECRET||'';
 
 app.get('/publish',(_req,res)=>res.type('html').send(`<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fuoconero Social</title><style>
 body{margin:0;background:#090b10;color:#eee;font:16px system-ui;max-width:900px;margin:auto;padding:28px}h1{font-size:34px}.card{background:#121722;border:1px solid #293142;border-radius:18px;padding:22px;margin:18px 0}input,textarea,button{box-sizing:border-box;width:100%;padding:13px;margin:7px 0;border-radius:10px;border:1px solid #39445a;background:#0b0f17;color:#fff}textarea{min-height:120px}button{background:#e65f22;border:0;font-weight:800;cursor:pointer}.row{display:flex;gap:14px;flex-wrap:wrap}.row label{flex:1;min-width:150px;background:#0b0f17;padding:12px;border-radius:10px}.row input{width:auto}video{width:100%;max-height:520px;background:#000;border-radius:12px}.ok{color:#77e39a}.err{color:#ff8585}</style></head><body>
 <h1>🔥 Fuoconero Social</h1><p>Carica un Reel, controlla anteprima e caption, poi pubblica con un click.</p>
 <div class="card"><input id="pin" type="password" placeholder="PIN pubblicazione"><input id="file" type="file" accept="video/mp4,video/*"><video id="preview" controls></video><button id="upload">1 · Carica video</button><div id="uStatus"></div></div>
-<div class="card"><textarea id="caption" placeholder="Caption"></textarea><input id="ytTitle" placeholder="Titolo YouTube" value="FUOCONERO"><div class="row"><label><input type="checkbox" id="ig" checked> Instagram</label><label><input type="checkbox" id="fb" checked> Facebook</label><label><input type="checkbox" id="yt"> YouTube</label><label><input type="checkbox" id="tt"> TikTok</label></div><button id="publishBtn">🚀 PUBBLICA</button><pre id="result"></pre></div>
+<div class="card"><textarea id="caption" placeholder="Caption Reel"></textarea><input id="ytTitle" placeholder="Titolo YouTube" value="FUOCONERO"><div class="row"><label><input type="checkbox" id="ig" checked> Instagram Reel</label><label><input type="checkbox" id="fb" checked> Facebook Reel</label><label><input type="checkbox" id="igs"> Instagram Story</label><label title="Adapter Facebook Stories ancora da attivare"><input type="checkbox" id="fbs" disabled> Facebook Story · presto</label><label><input type="checkbox" id="yt"> YouTube Short</label><label><input type="checkbox" id="tt"> TikTok</label></div><button id="publishBtn">🚀 PUBBLICA TUTTO</button><div id="result"></div></div>
 <script>
 let videoUrl='';
 const q=id=>document.getElementById(id);
 q('file').onchange=()=>{const f=q('file').files[0];if(f)q('preview').src=URL.createObjectURL(f)};
 q('upload').onclick=async()=>{const f=q('file').files[0];if(!f)return alert('Scegli un video');q('uStatus').textContent='Caricamento…';const r=await fetch('/panel/upload',{method:'POST',headers:{'x-publish-pin':q('pin').value,'content-type':f.type||'video/mp4','x-file-name':encodeURIComponent(f.name)},body:f});const j=await r.json();if(!r.ok){q('uStatus').innerHTML='<span class="err">'+JSON.stringify(j)+'</span>';return}videoUrl=j.url;q('uStatus').innerHTML='<span class="ok">✓ Video pronto online</span>'};
-q('publishBtn').onclick=async()=>{if(!videoUrl)return alert('Prima carica il video');if(!confirm('Pubblicare ora sui social selezionati?'))return;const platforms=[];if(q('ig').checked)platforms.push('instagram');if(q('fb').checked)platforms.push('facebook');const body={video_url:videoUrl,caption:q('caption').value,platform:platforms.length===2?'both':(platforms[0]||'none'),youtube:q('yt').checked,youtube_title:q('ytTitle').value,youtube_description:q('caption').value,tiktok:q('tt').checked,confirmed:true};q('result').textContent='Pubblicazione…';const r=await fetch('/panel/publish',{method:'POST',headers:{'content-type':'application/json','x-publish-pin':q('pin').value},body:JSON.stringify(body)});q('result').textContent=JSON.stringify(await r.json(),null,2)};
+q('publishBtn').onclick=async()=>{if(!videoUrl)return alert('Prima carica il video');if(!confirm('Pubblicare ora sui social selezionati?'))return;const platforms=[];if(q('ig').checked)platforms.push('instagram');if(q('fb').checked)platforms.push('facebook');const body={video_url:videoUrl,caption:q('caption').value,platform:platforms.length===2?'both':(platforms[0]||'none'),youtube:q('yt').checked,youtube_title:q('ytTitle').value,youtube_description:q('caption').value,tiktok:q('tt').checked,confirmed:true};q('result').innerHTML='Pubblicazione…';const out=[];const r=await fetch('/panel/publish',{method:'POST',headers:{'content-type':'application/json','x-publish-pin':q('pin').value},body:JSON.stringify(body)});out.push({nome:'Reel / Short',ok:r.ok,data:await r.json()});if(q('igs').checked){const sr=await fetch('/panel/story',{method:'POST',headers:{'content-type':'application/json','x-publish-pin':q('pin').value},body:JSON.stringify({video_url:videoUrl,platform:'instagram',confirmed:true})});out.push({nome:'Instagram Story',ok:sr.ok,data:await sr.json()})}q('result').innerHTML=out.map(x=>'<div class="'+(x.ok?'ok':'err')+'" style="padding:10px;margin:8px 0;background:#0b0f17;border-radius:10px"><b>'+(x.ok?'✓ ':'✗ ')+x.nome+'</b><br><small>'+JSON.stringify(x.data)+'</small></div>').join('')};
 </script></body></html>`));
 
 app.post('/panel/upload',express.raw({type:'video/*',limit:'100mb'}),async(req,res)=>{
@@ -394,6 +396,16 @@ app.post('/panel/upload',express.raw({type:'video/*',limit:'100mb'}),async(req,r
   const name=decodeURIComponent(req.get('x-file-name')||'reel.mp4');
   const fd=new FormData();fd.append('video',new Blob([req.body],{type:req.get('content-type')||'video/mp4'}),name);
   const rr=await fetch(PANEL_RENDERER_URL+'/upload-media',{method:'POST',headers:{authorization:'Bearer '+PANEL_RENDERER_SECRET},body:fd});
+  const j=await rr.json();return res.status(rr.status).json(j);
+ }catch(e){return res.status(502).json({ok:false,error:String(e.message||e)})}
+});
+app.post('/panel/story',async(req,res)=>{
+ try{
+  if(!PUBLISH_PIN||req.get('x-publish-pin')!==PUBLISH_PIN)return res.status(401).json({ok:false,error:'PIN non valido'});
+  if(!PANEL_SOCIAL_SECRET)return res.status(500).json({ok:false,error:'Social secret non configurato'});
+  const platform=String(req.body?.platform||'instagram');
+  if(platform!=='instagram')return res.status(501).json({ok:false,error:'Facebook Page Story adapter non ancora attivato'});
+  const rr=await fetch(PANEL_SOCIAL_URL+'/instagram/story',{method:'POST',headers:{authorization:'Bearer '+PANEL_SOCIAL_SECRET,'content-type':'application/json'},body:JSON.stringify({video_url:req.body?.video_url,confirmed:req.body?.confirmed===true})});
   const j=await rr.json();return res.status(rr.status).json(j);
  }catch(e){return res.status(502).json({ok:false,error:String(e.message||e)})}
 });
