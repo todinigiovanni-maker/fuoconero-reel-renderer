@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import { promises as fs } from 'node:fs';
 import { parseArticle, buildReelPlan, fetchBuffer } from './blog.js';
+import { normalizeWordPressEvent } from './wp-intake.js';
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -179,6 +180,46 @@ async function publishRendered({ videoUrl, caption, platform = 'none', youtube =
   return results;
 }
 
+
+// Receives a published Fuoconero post from WordPress/Fuoconero Social.
+// It deliberately renders PREVIEW ONLY: no social publication happens here.
+// The durable approval queue remains on the WordPress plugin side.
+app.post('/wordpress/article-published', auth, async (req, res) => {
+  try {
+    const event = normalizeWordPressEvent(req.body || {});
+    const article = await parseArticle(event.url);
+    const plan = buildReelPlan(article, req.body?.reel || {});
+    const rendered = await renderBlog({
+      article,
+      plan,
+      voiceUrl: '',
+      musicUrl: String(req.body?.music_url || FUOCONERO_MUSIC_URL || ''),
+      duration: Math.min(Math.max(Number(req.body?.duration) || 20, 10), 30)
+    });
+
+    return res.status(202).json({
+      ok: true,
+      accepted: true,
+      idempotency_key: event.idempotencyKey,
+      post_id: event.postId,
+      source_url: article.url,
+      article: { title: article.title, category: article.category, image: article.image },
+      reel: plan,
+      video_url: rendered.video_url,
+      expires_in_seconds: rendered.expires_in_seconds || 3600,
+      published: false,
+      approval_required: true,
+      version: '1.2.0'
+    });
+  } catch (error) {
+    return res.status(400).json({
+      ok: false,
+      stage: 'wordpress-article-published',
+      error: 'WordPress intake failed',
+      detail: detail(error)
+    });
+  }
+});
 
 app.get('/blog/preview', async (req, res) => {
   try {
