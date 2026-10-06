@@ -35,8 +35,18 @@ function run(cmd,args){
   });
 }
 function esc(s=''){return s.replace(/\\/g,'\\\\').replace(/:/g,'\\:').replace(/'/g,"\\'").replace(/%/g,'\\%');}
+function normalizeDisplayText(value=''){
+  return String(value)
+    .normalize('NFKC')
+    .replace(/[\u00A0\u2000-\u200B\u202F\u205F\u3000\uFEFF]/g,' ')
+    .replace(/([a-zà-öø-ÿ])([A-ZÀ-ÖØ-Þ])/g,'$1 $2')
+    .replace(/\s+([,.;:!?])/g,'$1')
+    .replace(/([,.;:!?])(?=[A-Za-zÀ-ÿ])/g,'$1 ')
+    .replace(/\s+/g,' ')
+    .trim();
+}
 function wrapText(value='',max=32){
-  const words=String(value).replace(/\s+/g,' ').trim().split(' ').filter(Boolean);
+  const words=normalizeDisplayText(value).split(' ').filter(Boolean);
   const lines=[];
   let line='';
   for(const word of words){
@@ -224,14 +234,14 @@ app.post('/render-blog-url', auth, upload.fields([
     }
 
     const values={
-      category: wrapText(String(req.body.category||'FUOCONERO').slice(0,60),24),
-      title: wrapText(String(req.body.title||'FUOCONERO').slice(0,120),20),
-      subtitle: wrapText(String(req.body.subtitle||'').slice(0,160),30),
-      hook: wrapText(String(req.body.hook||'').slice(0,220),28),
-      keyPoint: wrapText(String(req.body.keyPoint||'').slice(0,220),28),
-      highlight: wrapText(String(req.body.highlight||'').slice(0,260),27),
-      close: wrapText(String(req.body.close||'').slice(0,240),28),
-      cta: wrapText(String(req.body.cta||'Leggi tutto su fuoconero.com').slice(0,160),28)
+      category: wrapText(normalizeDisplayText(req.body.category||'FUOCONERO').slice(0,60),24),
+      title: wrapText(normalizeDisplayText(req.body.title||'FUOCONERO').slice(0,120),20),
+      subtitle: wrapText(normalizeDisplayText(req.body.subtitle||'').slice(0,160),30),
+      hook: wrapText(normalizeDisplayText(req.body.hook||'').slice(0,220),28),
+      keyPoint: wrapText(normalizeDisplayText(req.body.keyPoint||'').slice(0,220),28),
+      highlight: wrapText(normalizeDisplayText(req.body.highlight||'').slice(0,260),27),
+      close: wrapText(normalizeDisplayText(req.body.close||'').slice(0,240),28),
+      cta: wrapText(normalizeDisplayText(req.body.cta||'Leggi tutto su fuoconero.com').slice(0,160),28)
     };
 
     const files={};
