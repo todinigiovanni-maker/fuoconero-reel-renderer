@@ -3,11 +3,11 @@ android {
     namespace 'com.fuoconero.tvbridge'
     compileSdk 35
     defaultConfig {
-        applicationId 'com.fuoconero.iptv.clean050'
+        applicationId 'com.fuoconero.iptv.clean051'
         minSdk 26
         targetSdk 28
-        versionCode 50
-        versionName '0.5.0'
+        versionCode 51
+        versionName '0.5.1'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
