@@ -2,60 +2,147 @@ package com.fuoconero.tvbridge;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.content.pm.ResolveInfo;
+import android.graphics.Color;
+import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Bundle;
-import android.widget.Toast;
-import java.util.List;
-import java.util.Locale;
+import android.view.View;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.MediaController;
+import android.widget.TextView;
+import android.widget.VideoView;
 
-/** Open only a user-provided media URL. No DRM bypass or embedded video scrapers. */
+/**
+ * Full-screen playback page: the Projectivy card opens THIS activity.
+ * Play user-provided ordinary media formats locally or launch an installed player.
+ * No DRM circumvention, unofficial streaming URL discovery or embedded web scrapers.
+ */
 public class IptvPlayActivity extends Activity {
+    private IptvStore.Media media;
+    private TextView status;
+    private VideoView video;
+    private boolean active=false;
+
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
         long id=getIntent()==null?-1:getIntent().getLongExtra("id",-1);
-        if(id<0&&getIntent()!=null&&getIntent().getData()!=null){
+        if(id<0 && getIntent()!=null && getIntent().getData()!=null) {
             try{id=Long.parseLong(getIntent().getData().getLastPathSegment());}
             catch(Exception ignored){}
         }
-        IptvStore store=new IptvStore(this);
-        IptvStore.Media media=store.find(id);
-        if(media==null){Toast.makeText(this,"Canale non disponibile: aggiorna la M3U",Toast.LENGTH_LONG).show();finish();return;}
-        if(media.adult){
-            long active=getSharedPreferences("iptv_settings",MODE_PRIVATE).getLong("pin_unlocked_until",0);
-            if(System.currentTimeMillis()>active){
-                Toast.makeText(this,"Apri prima l'area riservata dal modulo IPTV e inserisci il PIN",Toast.LENGTH_LONG).show();
-                Intent home=new Intent(this,IptvActivity.class);
-                home.putExtra("category","Adulti");
-                startActivity(home);
-                finish();return;
+        media=new IptvStore(this).find(id);
+        if(media==null){showUnavailable("Scheda non trovata nel catalogo. Importa la playlist prima di aprirla.");return;}
+        if(media.adult) {
+            long until=getSharedPreferences("iptv_settings",MODE_PRIVATE)
+                .getLong("pin_unlocked_until",0);
+            if(System.currentTimeMillis()>until){
+                showUnavailable("Contenuto riservato: apri prima l'area protetta da PIN.");
+                return;
             }
         }
-        Intent generic=new Intent(Intent.ACTION_VIEW);
-        generic.setDataAndType(Uri.parse(media.url),"video/*");
-        generic.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        LinearLayout screen=new LinearLayout(this);
+        screen.setOrientation(LinearLayout.VERTICAL);
+        screen.setPadding(22,18,22,18);
+        screen.setBackgroundColor(0xff101928);
+        setContentView(screen);
+        TextView label=new TextView(this);
+        label.setText(media.title);
+        label.setTextColor(Color.WHITE);
+        label.setTextSize(22);
+        label.setMaxLines(2);
+        screen.addView(label);
+
+        status=new TextView(this);
+        status.setTextColor(0xffe1e7ef);
+        status.setTextSize(15);
+        status.setPadding(2,6,0,8);
+        screen.addView(status);
+        video=new VideoView(this);
+        video.setKeepScreenOn(true);
+        LinearLayout.LayoutParams videoParams=
+            new LinearLayout.LayoutParams(-1,0,1f);
+        screen.addView(video,videoParams);
+
+        LinearLayout actions=new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        screen.addView(actions);
+        addButton(actions,"▶ Riproduci",()->play());
+        addButton(actions,"Apri con un altro lettore",this::openExternal);
+        addButton(actions,"← Indietro",this::finish);
+        video.setOnPreparedListener(mp->{
+            mp.setOnInfoListener((player,what,extra)->false);
+            status.setText("Riproduzione avviata · "+media.group);
+            video.start();
+        });
+        video.setOnErrorListener((mp,what,extra)->{
+            active=false;
+            status.setText("Il lettore integrato non supporta questo flusso, oppure la fonte "+
+                "non risponde. Prova 'Apri con un altro lettore'.");
+            return true;
+        });
+        VideoView v=video;
+        MediaController controller=new MediaController(this);
+        controller.setAnchorView(v);
+        v.setMediaController(controller);
+        play();
+    }
+    private void addButton(LinearLayout row,String text,Runnable action){
+        Button button=new Button(this);
+        button.setText(text);button.setAllCaps(false);button.setTextSize(14);
+        row.addView(button,new LinearLayout.LayoutParams(0,-2,1f));
+        button.setOnClickListener(v->action.run());
+    }
+    private void showUnavailable(String message){
+        LinearLayout screen=new LinearLayout(this);
+        screen.setOrientation(LinearLayout.VERTICAL);
+        screen.setPadding(35,45,35,25);
+        screen.setBackgroundColor(0xff101928);
+        TextView explanation=new TextView(this);
+        explanation.setText(message);explanation.setTextColor(Color.WHITE);
+        explanation.setTextSize(22);
+        screen.addView(explanation);
+        Button back=new Button(this);back.setText("Indietro");
+        screen.addView(back);
+        back.setOnClickListener(v->finish());
+        setContentView(screen);
+    }
+    private void play(){
+        if(media==null || video==null)return;
+        if(active){video.start();return;}
+        if(!(media.url.startsWith("http://")||media.url.startsWith("https://"))) {
+            status.setText("Indirizzo di riproduzione non valido.");return;
+        }
         try{
-            // IPTV Extreme is preferred if it explicitly accepts ACTION_VIEW
-            // for the stream. Otherwise show the Android video-app chooser.
-            List<ResolveInfo> players=getPackageManager().queryIntentActivities(generic,0);
-            String iptvPackage=null;
-            for(ResolveInfo r:players){
-                if(r.activityInfo!=null && r.activityInfo.packageName!=null
-                    && r.activityInfo.packageName.toLowerCase(Locale.ROOT).contains("iptvextreme")){
-                    iptvPackage=r.activityInfo.packageName;
-                    break;
-                }
-            }
-            if(iptvPackage!=null){
-                generic.setPackage(iptvPackage);
-                startActivity(generic);
-            }else{
-                generic.setPackage(null);
-                startActivity(Intent.createChooser(generic,"Apri con un lettore compatibile"));
-            }
+            status.setText("Collegamento alla sorgente...");
+            video.setVideoURI(Uri.parse(media.url));
+            video.requestFocus();
+            active=true;
+            video.start();
         }catch(Exception e){
-            Toast.makeText(this,"Nessun lettore accetta il collegamento diretto. Apri il canale da IPTV Extreme.",Toast.LENGTH_LONG).show();
+            active=false;
+            status.setText("Riproduzione non disponibile: prova un lettore esterno.");
         }
-        finish();
+    }
+    private void openExternal(){
+        if(media==null)return;
+        try{
+            Intent view=new Intent(Intent.ACTION_VIEW);
+            Uri stream=Uri.parse(media.url);
+            // MIME hint, not a replacement for the source metadata.
+            view.setDataAndType(stream,"video/*");
+            view.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(Intent.createChooser(view,"Scegli un lettore per "+media.title));
+        }catch(Exception e){
+            if(status!=null)status.setText("Nessun lettore esterno compatibile installato.");
+        }
+    }
+    @Override protected void onPause(){
+        if(video!=null && video.isPlaying())video.pause();
+        super.onPause();
+    }
+    @Override protected void onDestroy(){
+        if(video!=null)video.stopPlayback();
+        super.onDestroy();
     }
 }
