@@ -13,6 +13,30 @@ import java.nio.charset.StandardCharsets;
 public final class TraktApi {
     private static final String BASE="https://api.trakt.tv";
     private final SharedPreferences p;
+    private static final String COOLDOWN_KEY = "trakt_cooldown_until";
+    private static final long DEFAULT_COOLDOWN_MS = 30L * 60L * 1000L;
+    private void assertAllowed() throws ApiError {
+        long remaining = p.getLong(COOLDOWN_KEY,0L) - System.currentTimeMillis();
+        if(remaining > 0) {
+            long minutes = (remaining + 59999L) / 60000L;
+            throw new ApiError(429,"Trakt temporaneamente limitato: riprova tra circa "+minutes+" min. I dati già presenti restano visibili.");
+        }
+    }
+    private ApiError httpFailure(int status, HttpURLConnection c, String response) {
+        if(status == 429) {
+            long wait = DEFAULT_COOLDOWN_MS;
+            String retryAfter = c.getHeaderField("Retry-After");
+            if(retryAfter != null) {
+                try { wait = Math.max(60000L, Long.parseLong(retryAfter.trim()) * 1000L); }
+                catch(NumberFormatException ignored) { /* conservatively use default */ }
+            }
+            wait = Math.min(wait,24L*60L*60L*1000L);
+            p.edit().putLong(COOLDOWN_KEY,System.currentTimeMillis()+wait).apply();
+            return new ApiError(429, "Trakt HTTP 429 (limite richieste / Cloudflare 1015). Attendi circa "+
+                ((wait+59999L)/60000L)+" min prima di riprovare. Nessuna scheda esistente è stata cancellata.");
+        }
+        return new ApiError(status,"Trakt HTTP "+status+" "+response.substring(0,Math.min(response.length(),200)));
+    }
     private final String clientId,clientSecret;
     public interface Progress {void say(String text);}
     public static final class DeviceCode {
@@ -88,6 +112,7 @@ public final class TraktApi {
             .putLong("expires_at",System.currentTimeMillis()+seconds*1000L).apply();
     }
     private JSONObject request(String method,String path,JSONObject body,boolean bearer)throws Exception {
+        assertAllowed();
         URL url=new URL(BASE+path);
         HttpURLConnection c=(HttpURLConnection)url.openConnection();
         c.setConnectTimeout(12000);c.setReadTimeout(18000);
@@ -106,11 +131,12 @@ public final class TraktApi {
             int status=c.getResponseCode();
             InputStream stream=(status>=400)?c.getErrorStream():c.getInputStream();
             String response=read(stream);
-            if(status>=400)throw new ApiError(status,"Trakt HTTP "+status+" "+response.substring(0,Math.min(response.length(),200)));
+            if(status>=400)throw httpFailure(status,c,response);
             return new JSONObject(response);
         }finally{c.disconnect();}
     }
     public org.json.JSONArray getArray(String path)throws Exception {
+        assertAllowed();
         URL url=new URL(BASE+path);
         HttpURLConnection c=(HttpURLConnection)url.openConnection();
         c.setConnectTimeout(12000);c.setReadTimeout(18000);
@@ -122,7 +148,7 @@ public final class TraktApi {
             int status=c.getResponseCode();
             InputStream stream=(status>=400)?c.getErrorStream():c.getInputStream();
             String response=read(stream);
-            if(status>=400)throw new ApiError(status,"Trakt HTTP "+status+" "+response.substring(0,Math.min(response.length(),200)));
+            if(status>=400)throw httpFailure(status,c,response);
             return new org.json.JSONArray(response);
         }finally{c.disconnect();}
     }
