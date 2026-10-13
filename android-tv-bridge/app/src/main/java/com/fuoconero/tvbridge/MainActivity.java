@@ -189,7 +189,7 @@ public final class MainActivity extends Activity {
         p.put(TvContract.PreviewPrograms.COLUMN_CHANNEL_ID, id);
         p.put(TvContract.PreviewPrograms.COLUMN_TYPE, TvContract.PreviewPrograms.TYPE_MOVIE);
         p.put(TvContract.PreviewPrograms.COLUMN_TITLE, name);
-        p.put(TvContract.PreviewPrograms.COLUMN_DESCRIPTION, desc);
+        p.put(TvContract.PreviewPrograms.COLUMN_SHORT_DESCRIPTION, desc);
         p.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_URI,
                "android.resource://" + getPackageName() + "/drawable/bridge_poster");
         Intent card = new Intent(this, MainActivity.class);
