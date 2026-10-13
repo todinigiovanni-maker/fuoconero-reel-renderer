@@ -10,7 +10,7 @@
        <activity android:name=".MainActivity" android:exported="true">
           <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LEANBACK_LAUNCHER"/></intent-filter>
        </activity>
-       <activity android:name=".OpenContentActivity" android:exported="false" />
+       <activity android:name=".OpenContentActivity" android:exported="true" />
        <provider android:name=".PosterProvider" android:authorities="com.fuoconero.tvbridge.images" android:exported="true" android:grantUriPermissions="true" />
        <service android:name=".SyncJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true" />
     </application>
