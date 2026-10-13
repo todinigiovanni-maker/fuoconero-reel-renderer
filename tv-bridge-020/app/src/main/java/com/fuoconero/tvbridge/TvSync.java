@@ -20,28 +20,32 @@ import java.security.MessageDigest;
 public final class TvSync {
     public interface Progress { void say(String text); }
     private static final String PREFS="tvbridge";
-    private static final String CHANNEL_NAME="Fuoconero · Trakt 0.2.4 TEST";
+    private static final String CHANNEL_NAME="Fuoconero · Trakt 0.2.5 TEST";
     private static class Item {
         String id,title,description,image,imdb;
         boolean episode;
+        double progress=-1;
+        int runtimeMinutes=0;
+        String season="",episodeNumber="",episodeTitle="";
     }
     private TvSync(){}
     public static void perform(Context ctx,Progress notify)throws Exception {
         TraktApi trakt=new TraktApi(ctx);
-        // Start with history: one request normally yields all 30 cards.
-        // Never make a separate Trakt metadata request for each title.
+        // Two API requests maximum: recent history plus playback percentages.
         LinkedHashMap<String,Item> items=new LinkedHashMap<>();
         JSONArray history=trakt.getArray("/sync/history?limit=60&extended=full");
         ingest(trakt,history,items,false,30);
         boolean complete=true;
-        if(items.size()<30){
-            try {
-                JSONArray paused=trakt.getArray("/sync/playback?extended=full");
-                ingest(trakt,paused,items,true,30);
-            } catch(TraktApi.ApiError e) {
-                if(e.code==429 && !items.isEmpty()) complete=false;
-                else throw e;
-            }
+        try {
+            JSONArray playback=trakt.getArray("/sync/playback?extended=full");
+            mergePlayback(playback,items,30);
+        } catch(TraktApi.ApiError e) {
+            if(e.code==403 || e.code==404) {
+                notify.say("Trakt non rende disponibile lo stato delle riproduzioni in pausa.");
+            } else if(e.code==429 && !items.isEmpty()) {
+                complete=false;
+                notify.say("Trakt temporaneamente limitato: conservo tutte le schede precedenti.");
+            } else throw e;
         }
         if(items.isEmpty())throw new Exception("Trakt non ha restituito film o episodi recenti. La riga esistente non è stata modificata.");
         notify.say("Trakt: "+items.size()+" titoli. Scarico le locandine...");
@@ -55,9 +59,9 @@ public final class TvSync {
         int visible=countCards(ctx,channel);
         SyncJob.schedule(ctx);
         notify.say("Trakt: "+cards.size()+" titoli. Schede realmente presenti nel canale Android TV: "+visible+
-            ".\\nLocandine reali in cache: "+realPosters+"; segnaposto: "+(cards.size()-realPosters)+
-            (complete?"":"\\nSincronizzazione parziale: non ho eliminato le vecchie schede.")+
-            "\\nLe schede aprono la HOME di Veezie. Se qui risultano 30 e Projectivy ne mostra una, controlla la configurazione del launcher.");
+            ".\nLocandine reali in cache: "+realPosters+"; segnaposto: "+(cards.size()-realPosters)+
+            (complete?"":"\nSincronizzazione parziale: non ho eliminato le vecchie schede.")+
+            "\nLe schede aprono la HOME di Veezie. Se qui risultano 30 e Projectivy ne mostra una, controlla la configurazione del launcher.");
     }
     public static int countCards(Context c) throws Exception {
         long id=c.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getLong("channel_id",-1);
@@ -93,10 +97,15 @@ public final class TvSync {
             if(items.containsKey(key))continue;
             Item t=new Item();t.episode=ep;t.id=key;
             t.title=media.optString("title","Senza titolo");t.imdb=ids.optString("imdb","");
+            t.runtimeMinutes=ep?0:Math.max(0,media.optInt("runtime",0));
             JSONObject episode=entry.optJSONObject("episode");
             if(ep && episode!=null){
-                String s=String.format(Locale.ITALY,"S%02dE%02d",episode.optInt("season"),episode.optInt("number"));
-                t.description=(paused?"In corso: ":"Ultimo episodio visto: ")+s+" · "+episode.optString("title","");
+                t.season=String.valueOf(episode.optInt("season",0));
+                t.episodeNumber=String.valueOf(episode.optInt("number",0));
+                t.episodeTitle=episode.optString("title","");
+                t.runtimeMinutes=Math.max(0,episode.optInt("runtime",0));
+                String code=String.format(Locale.ITALY,"S%02dE%02d",episode.optInt("season"),episode.optInt("number"));
+                t.description=(paused?"In pausa: ":"Ultimo episodio visto: ")+code+" · "+t.episodeTitle;
             }else t.description=paused?"Riproduzione in corso":"Nel tuo storico Trakt";
             t.image=posterUrl(media);
             // Trakt usually omits poster URLs. Prefer the existing IMDb image fallback;
@@ -107,6 +116,44 @@ public final class TvSync {
                     t.image="https://images.metahub.space/poster/medium/"+imdb+"/img";
             }
             items.put(key,t);
+        }
+    }
+    private static void mergePlayback(JSONArray arr,LinkedHashMap<String,Item> items,int max)throws Exception {
+        for(int i=0;i<arr.length();i++){
+            JSONObject entry=arr.optJSONObject(i);
+            if(entry==null)continue;
+            boolean episode="episode".equals(entry.optString("type",""));
+            if(!episode && !"movie".equals(entry.optString("type","")))continue;
+            JSONObject media=entry.optJSONObject(episode?"show":"movie");
+            JSONObject ids=media==null?null:media.optJSONObject("ids");
+            if(ids==null)continue;
+            String rawId=ids.optString("trakt",ids.optString("slug",""));
+            if(rawId.isEmpty())continue;
+            String key=(episode?"show_":"movie_")+rawId;
+            Item item=items.get(key);
+            if(item==null){
+                if(items.size()>=max)continue;
+                ingest(null,new JSONArray().put(entry),items,true,max);
+                item=items.get(key);
+            }
+            if(item==null)continue;
+            JSONObject ep=entry.optJSONObject("episode");
+            if(episode && ep!=null){
+                item.season=String.valueOf(ep.optInt("season",0));
+                item.episodeNumber=String.valueOf(ep.optInt("number",0));
+                item.episodeTitle=ep.optString("title","");
+                item.runtimeMinutes=Math.max(0,ep.optInt("runtime",0));
+                String code=String.format(Locale.ITALY,"S%02dE%02d",ep.optInt("season"),ep.optInt("number"));
+                item.description="In pausa: "+code+" · "+item.episodeTitle;
+            } else if(!episode) {
+                item.runtimeMinutes=Math.max(0,media.optInt("runtime",item.runtimeMinutes));
+                item.description="Film in pausa";
+            }
+            double p=entry.optDouble("progress",-1);
+            if(!Double.isNaN(p) && p>=0 && p<=100){
+                item.progress=p;
+                item.description+=" · "+Math.round(p)+"% riprodotto";
+            }
         }
     }
     private static String posterUrl(JSONObject media){
@@ -280,11 +327,27 @@ public final class TvSync {
             values.put(TvContract.PreviewPrograms.COLUMN_TITLE,item.title);
             values.put(TvContract.PreviewPrograms.COLUMN_SHORT_DESCRIPTION,item.description);
             values.put(TvContract.PreviewPrograms.COLUMN_INTERNAL_PROVIDER_ID,key);
+            values.put(TvContract.PreviewPrograms.COLUMN_CONTENT_ID,"trakt:"+item.id);
+            if(item.episode && !item.season.isEmpty()){
+                values.put(TvContract.PreviewPrograms.COLUMN_SEASON_DISPLAY_NUMBER,item.season);
+                values.put(TvContract.PreviewPrograms.COLUMN_EPISODE_DISPLAY_NUMBER,item.episodeNumber);
+                values.put(TvContract.PreviewPrograms.COLUMN_EPISODE_TITLE,item.episodeTitle);
+            }
+            if(item.progress>=0 && item.runtimeMinutes>0){
+                long total=(long)item.runtimeMinutes*60L*1000L;
+                values.put(TvContract.PreviewPrograms.COLUMN_DURATION_MILLIS,total);
+                values.put(TvContract.PreviewPrograms.COLUMN_LAST_PLAYBACK_POSITION_MILLIS,
+                    Math.min(total,Math.round(total*item.progress/100.0)));
+            }
             values.put(TvContract.PreviewPrograms.COLUMN_WEIGHT,999-i);
-            Uri poster=Uri.parse("content://com.fuoconero.tvbridge.test024.images/posters/"+item.id+".png");
+            Uri poster=Uri.parse("content://com.fuoconero.tvbridge.test025.images/posters/"+item.id+".png");
             values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_URI,poster.toString());
             values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_ASPECT_RATIO,TvContract.PreviewPrograms.ASPECT_RATIO_2_3);
             Intent intent=new Intent(c,OpenContentActivity.class);
+            intent.setAction(Intent.ACTION_VIEW);
+            intent.setData(new Uri.Builder().scheme("fuoconero-tv").authority("item")
+                .appendPath(item.id).build());
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             values.put(TvContract.PreviewPrograms.COLUMN_INTENT_URI,intent.toUri(Intent.URI_INTENT_SCHEME));
             Long old=existing.get(key);
             if(old!=null){
