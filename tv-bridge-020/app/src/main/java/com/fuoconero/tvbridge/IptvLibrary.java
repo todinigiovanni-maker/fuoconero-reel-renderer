@@ -43,7 +43,8 @@ public final class IptvLibrary extends SQLiteOpenHelper {
     }
     @Override public void onConfigure(SQLiteDatabase db){
         super.onConfigure(db);
-        db.execSQL("PRAGMA busy_timeout=30000");
+        // Android SQLiteDatabase.execSQL rejects PRAGMA busy_timeout as a query.
+        // Rely on the connection busy handler supplied by Android instead.
     }
     @Override public void onCreate(SQLiteDatabase db){
         db.execSQL("CREATE TABLE series_index(media_id INTEGER PRIMARY KEY, series_key TEXT NOT NULL, display_title TEXT NOT NULL, season INTEGER NOT NULL, episode INTEGER NOT NULL, first_seen INTEGER NOT NULL)");
