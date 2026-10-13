@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - fuoconero-iptv-053-fullscreen-hd
+      - fix/iptv-053-import-loop
     paths:
       - 'tv-bridge-020/**'
       - '.github/workflows/fuoconero-tv-bridge-020.yml'

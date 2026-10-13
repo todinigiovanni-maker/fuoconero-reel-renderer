@@ -41,6 +41,7 @@ public class IptvActivity extends Activity {
     private TextView status,playlistLabel,sourceLabel;
     private EditText searchInput;
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
+    private boolean refreshQueued=false;
     private String currentCategory="";private int page=0;
     private SharedPreferences prefs;
     @Override public void onCreate(Bundle state){
@@ -336,6 +337,12 @@ public class IptvActivity extends Activity {
     }
 
     private void refresh(){
+        if(refreshQueued || IptvRefreshJob.isUpdating()){
+            showStatus("Importazione gia' in corso. Attendi il completamento.");
+            return;
+        }
+        refreshQueued=true;
+        IptvRefreshJob.schedule(this);
         showStatus("Importazione in corso. La lista e' molto grande: lascia aperta questa schermata.");
         worker.execute(()->{
             try{
@@ -344,6 +351,8 @@ public class IptvActivity extends Activity {
             }catch(Exception e){
                 showStatus("Aggiornamento M3U non riuscito: "+e.getMessage()+
                     ". I dati gia' importati restano disponibili.");
+            }finally{
+                runOnUiThread(()->refreshQueued=false);
             }
         });
     }
