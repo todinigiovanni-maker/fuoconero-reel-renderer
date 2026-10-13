@@ -46,16 +46,18 @@ public class IptvActivity extends Activity {
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
         prefs=getSharedPreferences(IptvStore.PREFS,MODE_PRIVATE);
+        immersiveMode();
         ScrollView scroll=new ScrollView(this);
+        scroll.setFillViewport(true);
         root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(36,26,36,26);
+        root.setPadding(24,12,24,16);
         root.setBackgroundColor(0xff141d2d);
         scroll.addView(root);
         setContentView(scroll);
 
         label(root,"FUOCONERO · IPTV",30,0xffff984c,true);
-        label(root,"0.5.2 LIBRERIA · Serie raggruppate, nuove uscite, DAZN e cronologia locale",15,0xffc3cbde,false);
+        label(root,"0.5.3 HD · Schermo intero, canali TV unici e Sport senza doppioni",15,0xffc3cbde,false);
         playlistLabel=new TextView(this);
         playlistLabel.setTextColor(Color.WHITE);
         playlistLabel.setTextSize(22);
@@ -625,6 +627,20 @@ public class IptvActivity extends Activity {
         runOnUiThread(()->{
             if(status!=null)status.setText(value);
         });
+    }
+    private void immersiveMode(){
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getWindow().getDecorView().setSystemUiVisibility(
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
+            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+            View.SYSTEM_UI_FLAG_FULLSCREEN |
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+    }
+    @Override public void onWindowFocusChanged(boolean hasFocus){
+        super.onWindowFocusChanged(hasFocus);
+        if(hasFocus)immersiveMode();
     }
     @Override protected void onDestroy(){
         worker.shutdownNow();
