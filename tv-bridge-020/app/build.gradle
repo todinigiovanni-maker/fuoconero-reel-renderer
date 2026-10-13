@@ -3,7 +3,7 @@ android {
     namespace 'com.fuoconero.tvbridge'
     compileSdk 35
     defaultConfig {
-        applicationId 'com.fuoconero.iptv.clean052'
+        applicationId 'com.fuoconero.iptv.clean053'
         minSdk 26
         targetSdk 28
         versionCode 53
