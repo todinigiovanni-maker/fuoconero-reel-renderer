@@ -21,7 +21,7 @@ public final class TvSync {
     public interface Progress { void say(String text); }
     private static final java.util.concurrent.atomic.AtomicBoolean SYNC_BUSY=new java.util.concurrent.atomic.AtomicBoolean(false);
     private static final String PREFS="tvbridge";
-    private static final String CHANNEL_NAME="Fuoconero · Veezie 0.3.5 TEST";
+    private static final String CHANNEL_NAME="Fuoconero · Veezie/Trakt 0.3.6 TEST";
     private static class Item {
         String id,title,description,image,imdb;
         boolean episode;
@@ -942,7 +942,7 @@ public final class TvSync {
         v.put(TvContract.Channels.COLUMN_TYPE,TvContract.Channels.TYPE_PREVIEW);
         v.put(TvContract.Channels.COLUMN_DISPLAY_NAME,CHANNEL_NAME);
         v.put(TvContract.Channels.COLUMN_APP_LINK_INTENT_URI,app.toUri(Intent.URI_INTENT_SCHEME));
-        v.put(TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID,"fuoconero-veezie-035");
+        v.put(TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID,"fuoconero-veezie-036");
         Uri result=c.getContentResolver().insert(TvContract.Channels.CONTENT_URI,v);
         if(result==null)throw new Exception("Android TV non ha creato il canale.");
         long id=ContentUris.parseId(result);
@@ -1037,7 +1037,7 @@ public final class TvSync {
                 poster=Uri.parse(item.importedPosterUri);
             }else{
                 poster=new Uri.Builder().scheme("content")
-                    .authority("com.fuoconero.tvbridge.test035.images")
+                    .authority("com.fuoconero.tvbridge.test036.images")
                     .appendPath("posters").appendPath(imageName)
                     .appendQueryParameter("v",String.valueOf(imageFile.lastModified())).build();
             }
@@ -1063,8 +1063,14 @@ public final class TvSync {
                     throw new Exception("Inserimento locandina fallito: "+item.title);
             }
         }
-        if(complete)for(Map.Entry<String,Long> old:existing.entrySet())if(!retained.contains(old.getKey()))
-            c.getContentResolver().delete(TvContract.buildPreviewProgramUri(old.getValue()),null,null);
+        for(Map.Entry<String,Long> old:existing.entrySet()){
+            // The temporary Veezie shortcut should vanish as soon as actual
+            // content cards exist, including when Trakt enrichment is partial.
+            boolean starter="fuoconero:movie_openveezie".equals(old.getKey())
+                && cards.size()>0 && !retained.contains(old.getKey());
+            if(starter || (complete && !retained.contains(old.getKey())))
+                c.getContentResolver().delete(TvContract.buildPreviewProgramUri(old.getValue()),null,null);
+        }
         for(long id:duplicates)c.getContentResolver().delete(TvContract.buildPreviewProgramUri(id),null,null);
     }
     public static void removeChannel(Context c){
