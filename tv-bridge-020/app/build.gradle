@@ -6,8 +6,8 @@ android {
         applicationId 'com.fuoconero.iptv.clean051'
         minSdk 26
         targetSdk 28
-        versionCode 51
-        versionName '0.5.1'
+        versionCode 52
+        versionName '0.5.2'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
