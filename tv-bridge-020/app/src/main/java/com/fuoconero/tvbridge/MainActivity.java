@@ -25,7 +25,7 @@ public class MainActivity extends Activity {
         ScrollView sv=new ScrollView(this); sv.setFillViewport(true); sv.addView(root);
         setContentView(sv);
         label("FUOCONERO · TV BRIDGE TEST",30,Color.rgb(255,128,58),true);
-        label("Versione 0.2.6 TEST · Le schede mostrano anche una barra quando Trakt fornisce la percentuale.",17,Color.WHITE,false);
+        label("Versione 0.2.7 TEST · Prossimi episodi e puntate mancanti, senza inventare una barra di riproduzione.",17,Color.WHITE,false);
         label("Le locandine aprono la HOME di Veezie: l'apertura dell'episodio è ancora da sviluppare.",15,0xffcccfde,false);
         label("Client ID Trakt (dalla propria app developer.trakt.tv/apps):",17,Color.WHITE,false);
         clientId=input("Client ID Trakt",p.getString("client_id",""),false);
