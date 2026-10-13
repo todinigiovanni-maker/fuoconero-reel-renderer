@@ -11,6 +11,8 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import java.util.ArrayDeque;
 import java.util.Locale;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import android.os.SystemClock;
 
 /**
@@ -82,6 +84,10 @@ public class VeezieNavService extends AccessibilityService {
             .putInt("probe_last_percent",-1)
             .putInt("probe_slider_hits",0)
             .putInt("probe_time_label_count",0)
+            .putString("probe_clock_1","")
+            .putString("probe_clock_2","")
+            .putString("probe_clock_ids","")
+            .putString("probe_clock_interpretation","In attesa di due tempi Veezie")
             .putString("probe_last_class","")
             .putString("probe_result","In attesa: apri una puntata in Veezie, visualizza i comandi video per alcuni secondi.")
             .apply();
@@ -95,6 +101,7 @@ public class VeezieNavService extends AccessibilityService {
         ArrayDeque<AccessibilityNodeInfo> stack=new ArrayDeque<>();
         stack.add(root);
         int checked=0,timeCount=0;
+        LinkedHashMap<String,String> clocks=new LinkedHashMap<>();
         while(!stack.isEmpty()&&checked++<350){
             AccessibilityNodeInfo node=stack.removeFirst();
             if(node.isVisibleToUser() && node.getPackageName()!=null &&
@@ -102,7 +109,15 @@ public class VeezieNavService extends AccessibilityService {
                 String cls=node.getClassName()==null?"":node.getClassName().toString().toLowerCase(Locale.ROOT);
                 String id=node.getViewIdResourceName()==null?"":node.getViewIdResourceName().toLowerCase(Locale.ROOT);
                 String shown=node.getText()==null?"":node.getText().toString().trim();
-                if(shown.matches("[0-9]{1,2}:[0-9]{2}(:[0-9]{2})?"))timeCount++;
+                // Veezie often exposes two clock labels even when a native
+                // seek bar is NOT exported to Android Accessibility.
+                if(isClock(shown)){
+                    timeCount++;
+                    if(clocks.size()<4 && !clocks.containsKey(shown)){
+                        String safeId=id.length()>65?id.substring(id.length()-65):id;
+                        clocks.put(shown,safeId);
+                    }
+                }
                 boolean slider=cls.contains("seekbar")||cls.contains("slider")||
                     id.contains("seekbar")||id.endsWith("/seek");
                 AccessibilityNodeInfo.RangeInfo range=slider?node.getRangeInfo():null;
@@ -124,7 +139,42 @@ public class VeezieNavService extends AccessibilityService {
                 if(c!=null)stack.addLast(c);
             }
         }
-        if(timeCount>0)prefs.edit().putInt("probe_time_label_count",timeCount).apply();
+        if(timeCount>0){
+            java.util.ArrayList<String> found=new java.util.ArrayList<>(clocks.keySet());
+            String first=found.size()>0?found.get(0):"";
+            String second=found.size()>1?found.get(1):"";
+            String hint="Servono due indicatori temporali";
+            if(!first.isEmpty() && !second.isEmpty()){
+                long a=clockSeconds(first),b=clockSeconds(second);
+                if(a>=0 && b>0 && a<=b && b>=120 && b<=21600){
+                    hint="Candidato: "+Math.round(100.0*a/b)+"% (ordine tempi NON verificato, nessuna scheda modificata)";
+                }else{
+                    hint="I due tempi non identificano ancora con certezza elapsed / duration";
+                }
+            }
+            java.util.ArrayList<String> ids=new java.util.ArrayList<>(clocks.values());
+            prefs.edit()
+                .putInt("probe_time_label_count",timeCount)
+                .putString("probe_clock_1",first)
+                .putString("probe_clock_2",second)
+                .putString("probe_clock_ids",String.join(" ; ",ids))
+                .putString("probe_clock_interpretation",hint)
+                .putString("probe_result","Due tempi letti da Veezie; significato da verificare prima di aggiornare Projectivy.")
+                .apply();
+        }
+    }
+    private static boolean isClock(String value){
+        return value!=null && value.matches("-?(?:[0-9]{1,3}:)?[0-9]{1,2}:[0-9]{2}");
+    }
+    private static long clockSeconds(String value){
+        if(!isClock(value)||value.startsWith("-"))return -1;
+        try{
+            String[] parts=value.split(":");
+            long seconds=0;
+            for(String part:parts)seconds=seconds*60+Long.parseLong(part);
+            return seconds;
+        }catch(NumberFormatException e){return -1;}
+    }
     }
     @Override public void onInterrupt(){halt("Interrotto");}
     @Override public void onDestroy(){
@@ -323,6 +373,10 @@ public class VeezieNavService extends AccessibilityService {
             "\nUltima barra osservata: "+(p.getInt("probe_last_percent",-1)<0?"non rilevata":
                 p.getInt("probe_last_percent",-1)+"% (NON verificata come avanzamento puntata)")+
             "\nIndicatori temporali visibili: "+p.getInt("probe_time_label_count",0)+
+            "\nTempo 1 letto da Veezie: "+p.getString("probe_clock_1","nessuno")+
+            "\nTempo 2 letto da Veezie: "+p.getString("probe_clock_2","nessuno")+
+            "\nCampi UI temporali: "+p.getString("probe_clock_ids","nessuno")+
+            "\nInterpretazione: "+p.getString("probe_clock_interpretation","non ancora provata")+
             "\nEsito sonda: "+p.getString("probe_result","non ancora eseguita")+
             "\nAggiornamento automatico Trakt: richiesto al ritorno in Projectivy, soggetto a cooldown"+
             "\nRevochi il permesso in Impostazioni > Accessibilita.";
