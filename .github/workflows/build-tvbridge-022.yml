@@ -1,0 +1,29 @@
+name: Build Fuoconero TV Bridge 0.2.2
+on:
+  push:
+    branches: [tvbridge-022-diagnostic]
+    paths:
+      - 'tvbridge/**'
+      - '.github/workflows/build-tvbridge-022.yml'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build Android TV APK
+        run: cd tvbridge && gradle :app:assembleDebug --stacktrace --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Fuoconero_TV_Bridge_0.2.2_Diagnostic_APK
+          path: tvbridge/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
