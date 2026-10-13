@@ -55,7 +55,7 @@ public class IptvActivity extends Activity {
         setContentView(scroll);
 
         label(root,"FUOCONERO · IPTV",30,0xffff984c,true);
-        label(root,"0.4.2 TEST · Configurazione ottimizzata per telecomando Sony",15,0xffc3cbde,false);
+        label(root,"0.5.0 CLEAN · Nuovo catalogo IPTV separato, ottimizzato per Sony",15,0xffc3cbde,false);
         playlistLabel=new TextView(this);
         playlistLabel.setTextColor(Color.WHITE);
         playlistLabel.setTextSize(22);
@@ -78,26 +78,34 @@ public class IptvActivity extends Activity {
         button(root,"1 · DAI UN NOME ALLA PLAYLIST",this::promptPlaylistName);
         button(root,"2 · IMPOSTA LINK M3U",this::promptPlaylistUrl);
         button(root,"3 · AGGIORNA LISTA ORA",this::refresh);
-        button(root,"4 · IMPORTA FILE M3U DA DOWNLOAD",this::importFromDownloads);
-        button(root,"5 · RECUPERA CATALOGO 0.4.1 (backup ADB)",()->{
-            showStatus("Controllo il backup della vecchia versione. Non cancello nulla.");
+        button(root,"4 · IMPORTA PLAYLIST ITALIANA DA DOWNLOAD",this::importFromDownloads);
+        button(root,"5 · DIAGNOSTICA CATALOGO",()->{
             worker.execute(()->{
                 try{
-                    String restored=IptvMigration.restore(this);
-                    showStatus(restored);
-                    try{showStatus(restored+"\n"+IptvPublisher.publish(this));}
-                    catch(Exception e){showStatus(restored+"\nProjectivy: "+e.getMessage());}
-                }catch(Exception e){showStatus("Recupero non riuscito: "+e.getMessage()+
-                    ". La 0.4.1 rimane intatta.");}
+                    IptvStore store=new IptvStore(this);
+                    long total=store.count();
+                    StringBuilder diagnostic=new StringBuilder("Catalogo locale: "+total+" contenuti");
+                    for(String cat:IptvStore.PUBLIC_GROUPS){
+                        diagnostic.append("\\n").append(cat).append(": ")
+                            .append(store.countCategory(cat));
+                    }
+                    diagnostic.append("\\nSe il catalogo e' vuoto, importa prima il file M3U dalla cartella Download.");
+                    showStatus(diagnostic.toString());
+                }catch(Exception e){showStatus("Diagnostica: "+e.getMessage());}
             });
         });
         button(root,"6 · MOSTRA LE CATEGORIE IN PROJECTIVY",()->{
             worker.execute(()->{
-                try{showStatus(IptvPublisher.publish(this));}
-                catch(Exception e){showStatus("Projectivy: "+e.getMessage());}
+                try{
+                    if(new IptvStore(this).count()==0){
+                        showStatus("Nessuna scheda: importa prima il file M3U con il pulsante 4.");
+                        return;
+                    }
+                    showStatus(IptvPublisher.publish(this));
+                }catch(Exception e){showStatus("Projectivy: "+e.getMessage());}
             });
         });
-        label(root,"Il nome scelto e' solo un'etichetta: il file M3U conserva sempre il nome originale.",14,0xffc3cbde,false);
+        label(root,"Questa app non importa automaticamente i canali stranieri: usa la playlist italiana selezionata. La lista originale resta intatta.",14,0xffc3cbde,false);
         label(root,"LE TUE CATEGORIE",20,Color.WHITE,true);
         for(String c:new String[]{"Preferiti","Novita","TV Italia","Sport","Documentari","Film","Serie","Altri canali","Tutti"}){
             button(root,"▶ "+("Novita".equals(c)?"Novità della playlist":c),()->showCategory(c,0,""));
@@ -110,7 +118,7 @@ public class IptvActivity extends Activity {
         IptvRefreshJob.schedule(this);
         long count=new IptvStore(this).count();
         showStatus(count==0?
-            "Playlist non importata. Seleziona la M3U una volta o usa l'URL della playlist.":
+            "Catalogo vuoto. Copia Fuoconero_IPTV_Italia_Selezione.m3u in Download, poi premi 4.":
             "Catalogo pronto: "+count+" contenuti. Aggiornamento automatico programmato se la fonte resta accessibile.");
         String category=getIntent().getStringExtra("category");
         if(category!=null && !category.isEmpty()){
