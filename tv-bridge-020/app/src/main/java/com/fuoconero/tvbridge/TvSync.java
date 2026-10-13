@@ -32,14 +32,14 @@ public final class TvSync {
         LinkedHashMap<String,Item> items=new LinkedHashMap<>();
         try {
             JSONArray paused=trakt.getArray("/sync/playback?extended=full");
-            ingest(trakt,paused,items,true,12);
+            ingest(trakt,paused,items,true,30);
         } catch(TraktApi.ApiError e) {
             // Some API plans/accounts do not expose sync/playback; history still works.
             if(e.code==401)throw e;
         }
-        if(items.size()<12){
-            JSONArray history=trakt.getArray("/sync/history?limit=30&extended=full");
-            ingest(trakt,history,items,false,12);
+        if(items.size()<30){
+            JSONArray history=trakt.getArray("/sync/history?limit=60&extended=full");
+            ingest(trakt,history,items,false,30);
         }
         if(items.isEmpty())throw new Exception("Trakt non ha restituito film o episodi recenti.");
         notify.say("Recuperate "+items.size()+" schede. Scarico le locandine...");
@@ -78,6 +78,11 @@ public final class TvSync {
                     String path=(ep?"/shows/":"/movies/")+rawId+"?extended=full";
                     t.image=posterUrl(api.get(path));
                 }catch(Exception ignored){}
+            }
+            if(t.image.isEmpty()){ 
+                String imdb=ids.optString("imdb","");
+                if(imdb.matches("tt[0-9]{5,12}"))
+                    t.image="https://images.metahub.space/poster/medium/"+imdb+"/img";
             }
             items.put(key,t);
         }
