@@ -25,7 +25,7 @@ public class MainActivity extends Activity {
         ScrollView sv=new ScrollView(this); sv.setFillViewport(true); sv.addView(root);
         setContentView(sv);
         label("FUOCONERO · TV BRIDGE TEST",30,Color.rgb(255,128,58),true);
-        label("Versione 0.2.9 TEST · Ricerca guidata Veezie con permesso accessibilita facoltativo.",17,Color.WHITE,false);
+        label("Versione 0.3.0 TEST · Sincronizzazione Trakt dopo il ritorno da Veezie e controllo periodico.",17,Color.WHITE,false);
         label("Per cercare automaticamente il titolo in Veezie, abilita il servizio Fuoconero nelle impostazioni Accessibilita della TV. Puoi revocarlo quando vuoi.",15,0xffcccfde,false);
         label("Client ID Trakt (dalla propria app developer.trakt.tv/apps):",17,Color.WHITE,false);
         clientId=input("Client ID Trakt",p.getString("client_id",""),false);
@@ -74,7 +74,7 @@ public class MainActivity extends Activity {
                 button("8 · Abilita navigazione Veezie (Accessibilita)", () -> {
             try {
                 startActivity(new android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));
-                status("Nelle impostazioni Accessibilita, cerca Fuoconero TV Bridge 0.2.9 TEST e abilita Veezie Navigator. Questa funzione e' facoltativa e leggendo l'interfaccia di Veezie puo' cliccare sui suoi comandi.");
+                status("Nelle impostazioni Accessibilita, cerca Fuoconero TV Bridge 0.3.0 TEST e abilita Veezie Navigator. Questa funzione e' facoltativa e leggendo l'interfaccia di Veezie puo' cliccare sui suoi comandi.");
             }catch(Exception ex){status("Apri manualmente Impostazioni TV > Accessibilita. "+ex.getMessage());}
         });
         button("9 · Annulla navigazione automatica", () -> {
