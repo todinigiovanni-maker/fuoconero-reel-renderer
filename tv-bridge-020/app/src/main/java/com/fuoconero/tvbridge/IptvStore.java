@@ -93,8 +93,10 @@ public final class IptvStore extends SQLiteOpenHelper {
         long now=System.currentTimeMillis(),count=0;
         SQLiteDatabase db=getWritableDatabase();
         long prev=prefs.getLong("successful_imports",0);
-        String sql="INSERT OR REPLACE INTO entries(ident,title,grp,url,category,kind,adult,seen,first_seen,fav) "+
-            "VALUES(?,?,?,?,?,?,?,?,COALESCE((SELECT first_seen FROM entries WHERE ident=?),?),COALESCE((SELECT fav FROM entries WHERE ident=?),0))";
+        // Reusing the existing row ID keeps Projectivy Intent IDs and favorites
+        // stable across a refresh of the very same playlist.
+        String sql="INSERT OR REPLACE INTO entries(id,ident,title,grp,url,category,kind,adult,seen,first_seen,fav) "+
+            "VALUES((SELECT id FROM entries WHERE ident=?),?,?,?,?,?,?,?,?,COALESCE((SELECT first_seen FROM entries WHERE ident=?),?),COALESCE((SELECT fav FROM entries WHERE ident=?),0))";
         db.beginTransaction();
         try(BufferedReader reader=new BufferedReader(new InputStreamReader(input,StandardCharsets.UTF_8),65536)){
             SQLiteStatement put=db.compileStatement(sql);
@@ -120,16 +122,17 @@ public final class IptvStore extends SQLiteOpenHelper {
                     String ident=identity(title,grp,url);
                     put.clearBindings();
                     put.bindString(1,ident);
-                    put.bindString(2,title);
-                    put.bindString(3,grp);
-                    put.bindString(4,url);
-                    put.bindString(5,category);
-                    put.bindString(6,kind);
-                    put.bindLong(7,adult?1:0);
-                    put.bindLong(8,now);
-                    put.bindString(9,ident);
-                    put.bindLong(10,now);
-                    put.bindString(11,ident);
+                    put.bindString(2,ident);
+                    put.bindString(3,title);
+                    put.bindString(4,grp);
+                    put.bindString(5,url);
+                    put.bindString(6,category);
+                    put.bindString(7,kind);
+                    put.bindLong(8,adult?1:0);
+                    put.bindLong(9,now);
+                    put.bindString(10,ident);
+                    put.bindLong(11,now);
+                    put.bindString(12,ident);
                     put.executeInsert();
                     count++;
                     info=null;
