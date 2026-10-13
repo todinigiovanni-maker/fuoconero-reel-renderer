@@ -44,9 +44,12 @@ public class MainActivity extends Activity {
         scroll.addView(root);
         setContentView(scroll);
 
-        label("FUOCONERO · TV BRIDGE",29,0xffff8c48,true);
-        label("0.4.0 TEST · Veezie + Trakt automatici, nuovo modulo M3U IPTV.",17,Color.WHITE,false);
-        label("Veezie resta indipendente. Per la playlist apri IPTV e configura una volta file M3U o URL.",15,0xffcbd1df,false);
+        label("FUOCONERO · IPTV EDITION",29,0xffff8c48,true);
+        label("0.4.0 TEST · Modulo IPTV che affianca la 0.3.6 funzionante.",17,Color.WHITE,false);
+        label("Apri subito IPTV qui sotto. La 0.3.6 continua a gestire Veezie e Trakt.",15,0xffcbd1df,false);
+        button("▶ ENTRA IN FUOCONERO IPTV",()->{
+            startActivity(new Intent(this,IptvActivity.class));
+        });
         label("Client ID Trakt (si inserisce una sola volta):",15,Color.WHITE,false);
         clientId=input("Client ID Trakt",trakt.getString("client_id",""),false);
         label("Client Secret (opzionale):",14,0xffcbd1df,false);
@@ -150,13 +153,15 @@ public class MainActivity extends Activity {
         root.addView(status);
         status(hasTrakt()?
             "Trakt gia' collegato: controllo automaticamente il catalogo...":
-            "Veezie pronto. Per le locandine automatiche premi 1 e collega Trakt una sola volta.");
+            "IPTV pronta da configurare. Veezie/Trakt rimangono operativi nella versione 0.3.6.");
 
         pool.execute(()->{
             try{
-                TvSync.ensureStarter(this);
-                runOnUiThread(()->TvSync.requestVisibility(this));
+                // Keep the stable 0.3.6 Veezie row untouched. 0.4.0 remains
+                // an IPTV-only companion unless Trakt is linked in THIS app.
                 if(hasTrakt()){
+                    TvSync.ensureStarter(this);
+                    runOnUiThread(()->TvSync.requestVisibility(this));
                     SyncJob.schedule(this);
                     long last=getSharedPreferences("tvbridge",MODE_PRIVATE)
                         .getLong("last_sync_started",0);
