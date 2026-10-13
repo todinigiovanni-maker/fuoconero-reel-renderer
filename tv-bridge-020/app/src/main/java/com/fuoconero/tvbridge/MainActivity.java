@@ -24,8 +24,8 @@ public class MainActivity extends Activity {
         root.setPadding(48,28,48,28); root.setBackgroundColor(Color.rgb(17,20,32));
         ScrollView sv=new ScrollView(this); sv.setFillViewport(true); sv.addView(root);
         setContentView(sv);
-        label("FUOCONERO · TV BRIDGE",30,Color.rgb(255,128,58),true);
-        label("Versione 0.2.4 · Lo storico Trakt diventa una riga nella home Projectivy.",17,Color.WHITE,false);
+        label("FUOCONERO · TV BRIDGE TEST",30,Color.rgb(255,128,58),true);
+        label("Versione 0.2.4 TEST · Lo storico Trakt diventa una riga nella home Projectivy.",17,Color.WHITE,false);
         label("Le locandine aprono la HOME di Veezie: l'apertura dell'episodio è ancora da sviluppare.",15,0xffcccfde,false);
         label("Client ID Trakt (dalla propria app developer.trakt.tv/apps):",17,Color.WHITE,false);
         clientId=input("Client ID Trakt",p.getString("client_id",""),false);
