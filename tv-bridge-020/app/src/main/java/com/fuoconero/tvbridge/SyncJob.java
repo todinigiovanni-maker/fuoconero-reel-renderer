@@ -13,7 +13,7 @@ public class SyncJob extends JobService {
             try{
                 String token=getSharedPreferences("trakt",MODE_PRIVATE).getString("access_token","");
                 if(!token.isEmpty())TvSync.perform(this,msg->{});
-            } catch(Exception ignored){}
+            } catch(Exception e){android.util.Log.w("FuoconeroTV","Sincronizzazione automatica sospesa: "+e.getMessage());}
             finally{jobFinished(params,false);}
         }).start();
         return true;
@@ -23,7 +23,7 @@ public class SyncJob extends JobService {
         JobScheduler s=(JobScheduler)c.getSystemService(Context.JOB_SCHEDULER_SERVICE);
         if(s==null)return;
         JobInfo j=new JobInfo.Builder(2020,new ComponentName(c,SyncJob.class))
-            .setPeriodic(6L*60*60*1000).setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).setPersisted(false).build();
+            .setPeriodic(12L*60*60*1000).setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).setPersisted(false).build();
         s.schedule(j);
     }
 }
