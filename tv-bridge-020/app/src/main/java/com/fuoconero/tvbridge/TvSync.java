@@ -21,7 +21,7 @@ public final class TvSync {
     public interface Progress { void say(String text); }
     private static final java.util.concurrent.atomic.AtomicBoolean SYNC_BUSY=new java.util.concurrent.atomic.AtomicBoolean(false);
     private static final String PREFS="tvbridge";
-    private static final String CHANNEL_NAME="Fuoconero · Trakt 0.3.0 TEST";
+    private static final String CHANNEL_NAME="Fuoconero · Veezie/Trakt 0.3.1 TEST";
     private static class Item {
         String id,title,description,image,imdb;
         boolean episode;
@@ -722,7 +722,7 @@ public final class TvSync {
             File imageFile=new File(posterDir,imageName);
             // Changed URI when a poster is regenerated so launcher image caches refresh.
             Uri poster=new Uri.Builder().scheme("content")
-                .authority("com.fuoconero.tvbridge.test030.images")
+                .authority("com.fuoconero.tvbridge.test031.images")
                 .appendPath("posters").appendPath(imageName)
                 .appendQueryParameter("v",String.valueOf(imageFile.lastModified())).build();
             values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_URI,poster.toString());
