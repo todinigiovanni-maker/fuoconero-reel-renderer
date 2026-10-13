@@ -386,6 +386,134 @@ public final class TvSync {
         }
         return real;
     }
+    // Progress data is private per user and no per-show endpoints are fetched in bulk.
+    private static void addRemaining(JSONArray watched,Map<String,Item> items){
+        for(int i=0;i<watched.length();i++){
+            JSONObject obj=watched.optJSONObject(i);
+            if(obj==null)continue;
+            JSONObject show=obj.optJSONObject("show");
+            JSONObject ids=show==null?null:show.optJSONObject("ids");
+            if(ids==null)continue;
+            String id=ids.optString("trakt",ids.optString("slug",""));
+            Item item=items.get("show_"+id);
+            if(item==null)continue;
+            int aired=show.optInt("aired_episodes",-1);
+            JSONArray seasons=obj.optJSONArray("seasons");
+            if(aired<0 || seasons==null)continue;
+            int watchedCount=0;
+            Set<String> seen=new HashSet<>();
+            for(int j=0;j<seasons.length();j++){
+                JSONObject season=seasons.optJSONObject(j);
+                if(season==null)continue;
+                int seasonNo=season.optInt("number",-1);
+                if(seasonNo<1)continue; // Trakt excludes specials in regular aired counts.
+                JSONArray episodes=season.optJSONArray("episodes");
+                if(episodes==null)continue;
+                for(int k=0;k<episodes.length();k++){
+                    JSONObject episode=episodes.optJSONObject(k);
+                    if(episode==null)continue;
+                    int number=episode.optInt("number",-1);
+                    if(number<1)continue;
+                    if(episode.optInt("plays",0)>0 || episode.optBoolean("completed",false)){
+                        if(seen.add(seasonNo+":"+number))watchedCount++;
+                    }
+                }
+            }
+            item.episodesRemaining=Math.max(0,aired-watchedCount);
+        }
+    }
+    private static void applyNextDetails(Item item,JSONObject detail){
+        if(detail==null)return;
+        int aired=detail.optInt("aired",-1),completed=detail.optInt("completed",-1);
+        if(aired>=0 && completed>=0)
+            item.episodesRemaining=Math.max(0,aired-completed);
+        JSONObject next=detail.optJSONObject("next_episode");
+        if(next!=null && next.optInt("season",-1)>0 && next.optInt("number",-1)>0){
+            item.nextSeason=String.format(Locale.ITALY,"%02d",next.optInt("season"));
+            item.nextEpisodeNumber=String.format(Locale.ITALY,"%02d",next.optInt("number"));
+            item.nextEpisodeTitle=next.optString("title","");
+            item.nextRuntimeMinutes=Math.max(0,next.optInt("runtime",0));
+        }
+    }
+    private static boolean loadNextCache(Context ctx,Item item){
+        try{
+            SharedPreferences p=ctx.getSharedPreferences("tvbridge_next",Context.MODE_PRIVATE);
+            String value=p.getString(item.id,null);
+            if(value==null)return false;
+            JSONObject cached=new JSONObject(value);
+            long age=System.currentTimeMillis()-cached.optLong("cached_at",0);
+            if(age<0||age>=6L*3600L*1000L)return false;
+            if(!cached.optString("last_season","").equals(item.season))return false;
+            if(!cached.optString("last_episode","").equals(item.episodeNumber))return false;
+            applyNextDetails(item,cached.optJSONObject("data"));
+            return true;
+        }catch(Exception e){return false;}
+    }
+    private static void storeNextCache(Context ctx,Item item,JSONObject detail){
+        try{
+            JSONObject cache=new JSONObject();
+            cache.put("cached_at",System.currentTimeMillis());
+            cache.put("last_season",item.season);
+            cache.put("last_episode",item.episodeNumber);
+            cache.put("data",detail);
+            ctx.getSharedPreferences("tvbridge_next",Context.MODE_PRIVATE)
+                .edit().putString(item.id,cache.toString()).apply();
+        }catch(Exception ignored){}
+    }
+    private static boolean drawNextPoster(Context ctx,Item item){
+        if(!item.episode || item.episodesRemaining<0)return false;
+        File folder=new File(ctx.getFilesDir(),"posters");
+        File original=new File(folder,item.id+".png");
+        File output=new File(folder,item.id+"_next.png");
+        if(!original.isFile())return false;
+        Bitmap input=null,bitmap=null;
+        try{
+            input=BitmapFactory.decodeFile(original.getAbsolutePath());
+            if(input==null)return false;
+            bitmap=input.copy(Bitmap.Config.ARGB_8888,true);
+            input.recycle();input=null;
+            if(bitmap==null)return false;
+            int width=bitmap.getWidth(),height=bitmap.getHeight();
+            Canvas canvas=new Canvas(bitmap);
+            Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
+            boolean hasNext=!item.nextSeason.isEmpty();
+            float top=height*(hasNext?0.795f:0.84f);
+            p.setColor(0xEC131C2C);
+            canvas.drawRect(0,top,width,height,p);
+            p.setTypeface(Typeface.create("sans-serif",Typeface.BOLD));
+            p.setColor(0xFFFF9350);
+            p.setTextSize(Math.max(16f,width*0.074f));
+            String first=hasNext?("PROSSIMA  S"+item.nextSeason+"E"+item.nextEpisodeNumber):
+                "DA CONTINUARE";
+            canvas.drawText(first,width*0.055f,top+height*0.060f,p);
+            p.setColor(Color.WHITE);
+            p.setTextSize(Math.max(15f,width*0.060f));
+            String remaining=item.episodesRemaining+" episodi da vedere";
+            canvas.drawText(remaining,width*0.055f,top+height*0.112f,p);
+            int runtime=item.nextRuntimeMinutes>0?item.nextRuntimeMinutes:item.runtimeMinutes;
+            if(runtime>0){
+                p.setTextSize(Math.max(13f,width*0.047f));
+                p.setColor(0xFFD1D9E9);
+                String label=(item.nextRuntimeMinutes>0?"Durata: ":"Durata media: ")+runtime+" min";
+                canvas.drawText(label,width*0.055f,top+height*0.165f,p);
+            }
+            File temp=new File(folder,item.id+"_next.tmp");
+            boolean saved;
+            try(FileOutputStream out=new FileOutputStream(temp)){
+                saved=bitmap.compress(Bitmap.CompressFormat.PNG,90,out);
+            }
+            if(!saved){temp.delete();return false;}
+            if(output.exists()&&!output.delete()){temp.delete();return false;}
+            if(!temp.renameTo(output)){temp.delete();return false;}
+            return true;
+        }catch(Exception e){
+            android.util.Log.w("FuoconeroTV","Poster up-next not available",e);
+            return false;
+        }finally{
+            if(input!=null)input.recycle();
+            if(bitmap!=null)bitmap.recycle();
+        }
+    }
     private static boolean drawProgressPoster(Context ctx,Item item){
         if(item.progress<=0 || item.progress>=100)return false;
         File folder=new File(ctx.getFilesDir(),"posters");
