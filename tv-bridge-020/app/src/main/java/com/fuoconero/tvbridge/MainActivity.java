@@ -33,8 +33,8 @@ public class MainActivity extends Activity {
         setContentView(sv);
 
         label(root,"FUOCONERO · VEEZIE EDITION",29,Color.rgb(255,128,58),true);
-        label(root,"0.3.4 TEST · Canale Veezie visibile senza codice Trakt.",17,Color.WHITE,false);
-        label(root,"Veezie avviabile da Projectivy. Android potrebbe impedire la lettura delle schede create da altre app.",15,0xffcdd1dd,false);
+        label(root,"0.3.5 TEST · Importazione offline delle 30 locandine e titoli, senza codice Trakt.",17,Color.WHITE,false);
+        label(root,"Veezie in Projectivy. Importa il catalogo ZIP dal PC via ADB: nessun accesso al database TV.",15,0xffcdd1dd,false);
 
         button(root,"1 · Crea e rendi visibile la riga Veezie",()->{
             status("Creo la riga Veezie indipendente...");
@@ -43,12 +43,21 @@ public class MainActivity extends Activity {
                     TvSync.ensureStarter(this);
                     runOnUiThread(()->{
                         TvSync.requestVisibility(this);
-                        status("Canale Veezie creato. Se non compare, apri Projectivy > Gestisci canali e abilita Fuoconero · Veezie 0.3.4 TEST.");
+                        status("Canale Veezie creato. Se non compare, apri Projectivy > Gestisci canali e abilita Fuoconero · Veezie 0.3.5 TEST.");
                     });
                 }catch(Exception e){status("Creazione canale: "+e.getMessage());}
             });
         });
-        button(root,"2 · Prova a importare le vecchie schede",()->{
+        button(root,"2 · Ricevi catalogo ZIP dal PC via ADB (porta 8787)",()->{
+            status("In attesa per 3 minuti del catalogo ZIP da ADB sulla porta 8787. Non chiudere l'app.");
+            pool.execute(()->{
+                String answer=CatalogReceiver.receiveOnce(this);
+                status(answer);
+                if(answer.startsWith("IMPORTAZIONE RIUSCITA:"))
+                    runOnUiThread(()->TvSync.requestVisibility(this));
+            });
+        });
+        button(root,"3 · Prova a importare le vecchie schede",()->{
             status("Leggo le righe Fuoconero gia' presenti in Android TV...");
             pool.execute(()->{
                 try{status(TvSync.importExisting(this));}
@@ -71,7 +80,7 @@ public class MainActivity extends Activity {
             try{
                 startActivity(new android.content.Intent(
                     android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));
-                status("Abilita SOLO il servizio Fuoconero TV Bridge 0.3.3 TEST. Se una vecchia versione e' ancora abilitata, disabilitala per evitare interferenze.");
+                status("Abilita SOLO il servizio Fuoconero TV Bridge 0.3.5 TEST. Se una vecchia versione e' ancora abilitata, disabilitala per evitare interferenze.");
             }catch(Exception e){status("Apri Impostazioni TV > Accessibilita. "+e.getMessage());}
         });
         button(root,"6 · Test tempi lettore Veezie (2 min)",()->{
@@ -155,8 +164,8 @@ public class MainActivity extends Activity {
         status.setTextColor(0xffeeecf5);
         status.setPadding(0,22,0,12);
         root.addView(status);
-        status("Modalita' Veezie attiva. Premi 1 per pubblicare il canale; Trakt e' facoltativo.");
-        if(!p.getString("access_token","").isEmpty())SyncJob.schedule(this);
+        status("Modalita' Veezie attiva. Premi 2 per ricevere il catalogo offline via ADB. Trakt e' facoltativo.");
+        // Nessuna sincronizzazione Trakt automatica in modalita Veezie.
         if(getSharedPreferences("tvbridge",MODE_PRIVATE).getLong("channel_id",-1L)<0L){
             pool.execute(()->{
                 try{
