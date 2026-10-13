@@ -47,6 +47,9 @@ public class SyncJob extends JobService {
     @Override public boolean onStopJob(JobParameters params){return true;}
 
     public static void requestRefresh(Context context){
+        String access=context.getSharedPreferences("trakt",Context.MODE_PRIVATE)
+            .getString("access_token","");
+        if(access==null || access.isEmpty())return; // Veezie Edition runs without Trakt.
         JobScheduler scheduler=(JobScheduler)context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
         if(scheduler==null)return;
         SharedPreferences state=context.getSharedPreferences("tvbridge",Context.MODE_PRIVATE);
@@ -64,6 +67,9 @@ public class SyncJob extends JobService {
     }
 
     public static void schedule(Context context){
+        String access=context.getSharedPreferences("trakt",Context.MODE_PRIVATE)
+            .getString("access_token","");
+        if(access==null || access.isEmpty())return;
         JobScheduler scheduler=(JobScheduler)context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
         if(scheduler==null)return;
         JobInfo info=new JobInfo.Builder(PERIODIC_JOB,new ComponentName(context,SyncJob.class))
