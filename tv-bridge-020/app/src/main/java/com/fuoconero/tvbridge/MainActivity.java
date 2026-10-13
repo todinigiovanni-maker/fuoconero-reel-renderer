@@ -33,10 +33,22 @@ public class MainActivity extends Activity {
         setContentView(sv);
 
         label(root,"FUOCONERO · VEEZIE EDITION",29,Color.rgb(255,128,58),true);
-        label(root,"0.3.3 TEST · Nessun codice Trakt necessario per usare le schede gia' presenti.",17,Color.WHITE,false);
-        label(root,"Veezie: ricerca e navigazione guidata. Le locandine si possono importare dalle versioni precedenti senza cancellarle.",15,0xffcdd1dd,false);
+        label(root,"0.3.4 TEST · Canale Veezie visibile senza codice Trakt.",17,Color.WHITE,false);
+        label(root,"Veezie avviabile da Projectivy. Android potrebbe impedire la lettura delle schede create da altre app.",15,0xffcdd1dd,false);
 
-        button(root,"1 · Recupera le schede dalla TV (senza Trakt)",()->{
+        button(root,"1 · Crea e rendi visibile la riga Veezie",()->{
+            status("Creo la riga Veezie indipendente...");
+            pool.execute(()->{
+                try{
+                    TvSync.ensureStarter(this);
+                    runOnUiThread(()->{
+                        TvSync.requestVisibility(this);
+                        status("Canale Veezie creato. Se non compare, apri Projectivy > Gestisci canali e abilita Fuoconero · Veezie 0.3.4 TEST.");
+                    });
+                }catch(Exception e){status("Creazione canale: "+e.getMessage());}
+            });
+        });
+        button(root,"2 · Prova a importare le vecchie schede",()->{
             status("Leggo le righe Fuoconero gia' presenti in Android TV...");
             pool.execute(()->{
                 try{status(TvSync.importExisting(this));}
@@ -143,13 +155,17 @@ public class MainActivity extends Activity {
         status.setTextColor(0xffeeecf5);
         status.setPadding(0,22,0,12);
         root.addView(status);
-        status("Modalita' Veezie attiva. Importa le schede con il pulsante 1; nessun codice Trakt richiesto.");
+        status("Modalita' Veezie attiva. Premi 1 per pubblicare il canale; Trakt e' facoltativo.");
         if(!p.getString("access_token","").isEmpty())SyncJob.schedule(this);
         if(getSharedPreferences("tvbridge",MODE_PRIVATE).getLong("channel_id",-1L)<0L){
             pool.execute(()->{
-                try{status("Primo avvio: "+TvSync.importExisting(this));}
-                catch(Exception e){status("Primo avvio Veezie: "+e.getMessage()+
-                    "\nPuoi riprovare con il pulsante 1. Trakt resta facoltativo.");}
+                try{
+                    TvSync.ensureStarter(this);
+                    runOnUiThread(()->{
+                        TvSync.requestVisibility(this);
+                        status("Canale Veezie creato. Se non compare in Projectivy, abilitalo in Gestisci canali. Nessun Trakt richiesto.");
+                    });
+                }catch(Exception e){status("Avvio: "+e.getMessage()+" - premi 1 per riprovare.");}
             });
         }
     }
