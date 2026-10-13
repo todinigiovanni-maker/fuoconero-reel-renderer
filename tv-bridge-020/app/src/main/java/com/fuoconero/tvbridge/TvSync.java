@@ -163,6 +163,8 @@ public final class TvSync {
             String fallback="https://images.metahub.space/poster/medium/"+item.imdb+"/img";
             HttpURLConnection con=null;
             try{
+                // Avoid downloading the same MetaHub URL twice in one attempt.
+                if(fallback.equals(item.image))throw new IOException("Poster URL già provato");
                 con=(HttpURLConnection)new URL(fallback).openConnection();
                 con.setConnectTimeout(9000);con.setReadTimeout(11000);
                 if(con.getResponseCode()==200){
@@ -177,6 +179,13 @@ public final class TvSync {
                     }
                 }
             }catch(Exception ignored){} finally{if(con!=null)con.disconnect();}
+        }
+        // Never overwrite a previously visible image with a placeholder on a network failure.
+        if(bmp==null && destination.isFile() && destination.length()>1000) {
+            if(!lastAttempt.exists())lastAttempt.createNewFile();
+            lastAttempt.setLastModified(System.currentTimeMillis());
+            android.util.Log.w("FuoconeroTV","Download locandina fallito, mantengo cache per "+item.title);
+            return realMarker.exists();
         }
         boolean real=bmp!=null;
         if(!real)android.util.Log.w("FuoconeroTV","Poster assente per "+item.title+" (IMDb="+item.imdb+")");
