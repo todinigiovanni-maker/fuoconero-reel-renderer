@@ -30,7 +30,8 @@ public final class IptvStore extends SQLiteOpenHelper {
     }
     private static final Pattern GROUP=Pattern.compile("(?:^|\\s)group-title=\"([^\"]*)\"");
     private static final Pattern NAME=Pattern.compile("(?:^|\\s)tvg-name=\"([^\"]*)\"");
-    public IptvStore(Context c){super(c,"fuoconero_iptv.db",null,1);}
+    private final Context app;
+    public IptvStore(Context c){super(c,"fuoconero_iptv.db",null,1);app=c.getApplicationContext();}
     @Override public void onCreate(SQLiteDatabase db){
         db.execSQL("CREATE TABLE entries(id INTEGER PRIMARY KEY AUTOINCREMENT, ident TEXT NOT NULL UNIQUE, title TEXT NOT NULL, grp TEXT NOT NULL, url TEXT NOT NULL, category TEXT NOT NULL, kind TEXT NOT NULL, adult INTEGER NOT NULL, seen INTEGER NOT NULL, first_seen INTEGER NOT NULL, fav INTEGER NOT NULL DEFAULT 0)");
         db.execSQL("CREATE INDEX idx_iptv_cat ON entries(category,adult,id)");
@@ -146,7 +147,8 @@ public final class IptvStore extends SQLiteOpenHelper {
         }finally{db.endTransaction();}
         prefs.edit().putLong("last_success",now)
             .putLong("item_count",count)
-            .putLong("successful_imports",prev+1).apply();
+            .putLong("successful_imports",prev+1)
+            .putLong("new_from",prev==0?Long.MAX_VALUE:now).apply();
         return "Playlist indicizzata: "+count+" contenuti; categorie pronte. "+
             (prev==0?"Primo caricamento: nessuna novita' ancora confrontabile.":"Novita' confrontate con l'importazione precedente.");
     }
@@ -170,6 +172,11 @@ public final class IptvStore extends SQLiteOpenHelper {
         ArrayList<String> args=new ArrayList<>();
         StringBuilder query=new StringBuilder("SELECT id,title,grp,url,category,kind,adult,fav FROM entries WHERE ");
         if("Preferiti".equals(category))query.append("fav=1 AND adult=0");
+        else if("Novita".equals(category)){
+            query.append("adult=0 AND first_seen>=?");
+            args.add(String.valueOf(app.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+                .getLong("new_from",Long.MAX_VALUE)));
+        }
         else if("Adulti".equals(category))query.append("adult=1");
         else if("Adulti TV".equals(category))query.append("adult=1 AND kind='TV'");
         else if("Adulti Video".equals(category))query.append("adult=1 AND kind<>'TV'");
