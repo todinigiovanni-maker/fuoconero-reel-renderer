@@ -21,7 +21,7 @@ import java.util.HashSet;
 
 /** Up to 12 previews per public category. Private/adult entries are never published. */
 public final class IptvPublisher {
-    private static final String AUTHORITY="com.fuoconero.tvbridge.test040.images";
+    private static final String AUTHORITY="com.fuoconero.tvbridge.test041.images";
     private IptvPublisher(){}
     public static String publish(Context ctx)throws Exception{
         IptvStore store=new IptvStore(ctx);
@@ -42,7 +42,7 @@ public final class IptvPublisher {
                 ContentValues row=new ContentValues();
                 row.put(TvContract.Channels.COLUMN_TYPE,TvContract.Channels.TYPE_PREVIEW);
                 row.put(TvContract.Channels.COLUMN_DISPLAY_NAME,"Fuoconero · IPTV "+category);
-                row.put(TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID,"fuoconero-iptv-040-"+category);
+                row.put(TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID,"fuoconero-iptv-041-"+category);
                 Intent home=new Intent(ctx,IptvActivity.class);
                 home.putExtra("category",category);
                 home.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
