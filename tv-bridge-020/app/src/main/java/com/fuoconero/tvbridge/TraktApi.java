@@ -78,7 +78,7 @@ public final class TraktApi {
             }catch(ApiError e){
                 // Device Code grant: awaiting user, too many polls, expired or denied.
                 if(e.code==400 || e.code==409) continue;
-                if(e.code==429) {interval+=5; continue;}
+                if(e.code==429)throw e; // Avoid appearing frozen on a Trakt rate limit.
                 throw e;
             }
         }
