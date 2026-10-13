@@ -21,7 +21,7 @@ public final class TvSync {
     public interface Progress { void say(String text); }
     private static final java.util.concurrent.atomic.AtomicBoolean SYNC_BUSY=new java.util.concurrent.atomic.AtomicBoolean(false);
     private static final String PREFS="tvbridge";
-    private static final String CHANNEL_NAME="Fuoconero · Veezie/Trakt 0.3.2 TEST";
+    private static final String CHANNEL_NAME="Fuoconero · Veezie 0.3.3 TEST";
     private static class Item {
         String id,title,description,image,imdb;
         boolean episode;
@@ -31,8 +31,147 @@ public final class TvSync {
         String nextSeason="",nextEpisodeNumber="",nextEpisodeTitle="";
         int episodesRemaining=-1,nextRuntimeMinutes=0;
         int episodesWatched=-1,episodesTotal=-1;
+        String importedPosterUri="";
     }
     private TvSync(){}
+    /**
+     * Import existing Fuoconero channel cards from Android TV, WITHOUT a Trakt token.
+     * Read-only towards the source channel, and will not change/delete old app data.
+     * Only publicly published previews whose program/provider IDs match Fuoconero
+     * are accepted. Poster copy uses the exported read-only image provider.
+     */
+    public static String importExisting(Context ctx)throws Exception {
+        android.content.ContentResolver resolver=ctx.getContentResolver();
+        long own=ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+            .getLong("channel_id",-1L);
+        Map<Long,String> channels=new HashMap<>();
+        try(Cursor cur=resolver.query(TvContract.Channels.CONTENT_URI,
+            new String[]{TvContract.Channels._ID,TvContract.Channels.COLUMN_DISPLAY_NAME},
+            null,null,null)){
+            if(cur!=null)while(cur.moveToNext()){
+                long id=cur.getLong(0);
+                String display=cur.getString(1);
+                if(id!=own && display!=null && display.startsWith("Fuoconero"))
+                    channels.put(id,display);
+            }
+        }
+        if(channels.isEmpty())
+            throw new Exception("Non trovo righe Fuoconero precedenti nella TV. Le vecchie app devono restare installate.");
+        class Previous {
+            String id,title,poster;boolean episode;
+        }
+        Map<Long,LinkedHashMap<String,Previous>> sources=new HashMap<>();
+        try(Cursor cur=resolver.query(TvContract.PreviewPrograms.CONTENT_URI,
+            new String[]{TvContract.PreviewPrograms.COLUMN_CHANNEL_ID,
+                TvContract.PreviewPrograms.COLUMN_INTERNAL_PROVIDER_ID,
+                TvContract.PreviewPrograms.COLUMN_TITLE,
+                TvContract.PreviewPrograms.COLUMN_POSTER_ART_URI,
+                TvContract.PreviewPrograms.COLUMN_TYPE},
+            null,null,null)){
+            if(cur!=null)while(cur.moveToNext()){
+                long id=cur.getLong(0);
+                if(!channels.containsKey(id))continue;
+                String provider=cur.getString(1);
+                if(provider==null || !provider.startsWith("fuoconero:"))continue;
+                String itemId=provider.substring("fuoconero:".length());
+                if(!itemId.matches("(show|movie)_[a-zA-Z0-9_-]{1,80}"))continue;
+                String title=cur.getString(2);
+                if(title==null || title.trim().isEmpty())continue;
+                LinkedHashMap<String,Previous> row=sources.get(id);
+                if(row==null){row=new LinkedHashMap<>();sources.put(id,row);}
+                if(row.size()>=30 || row.containsKey(itemId))continue;
+                Previous p=new Previous();
+                p.id=itemId;p.title=title;p.poster=cur.getString(3);
+                p.episode=itemId.startsWith("show_");
+                row.put(itemId,p);
+            }
+        }
+        long bestId=-1;int bestSize=0;
+        for(Map.Entry<Long,LinkedHashMap<String,Previous>> entry:sources.entrySet()){
+            int size=entry.getValue().size();
+            if(size>bestSize || (size==bestSize && entry.getKey()>bestId)){
+                bestSize=size;bestId=entry.getKey();
+            }
+        }
+        if(bestId<0 || bestSize==0)
+            throw new Exception("Non riesco a leggere locandine dalle vecchie versioni. Nessuna riga e' stata modificata.");
+        ArrayList<Item> cards=new ArrayList<>();
+        int copied=0,reused=0,missing=0;
+        File posters=new File(ctx.getFilesDir(),"posters");
+        if(!posters.exists()&&!posters.mkdirs())
+            throw new Exception("Impossibile creare la cartella delle locandine.");
+        for(Previous prev:sources.get(bestId).values()){
+            Item item=new Item();
+            item.id=prev.id;item.title=prev.title;item.episode=prev.episode;
+            item.description=prev.episode?
+                "Serie su Veezie · scegli la puntata nell'elenco Episodi":
+                "Film su Veezie · apri per cercare il contenuto";
+            boolean saved=false;
+            if(prev.poster!=null && prev.poster.startsWith("content://")){
+                try{
+                    Uri source=Uri.parse(prev.poster);
+                    String authority=source.getAuthority();
+                    if(authority!=null && authority.startsWith("com.fuoconero.tvbridge.test")
+                        && authority.endsWith(".images")){
+                        // First copy the original clean poster, not stale Trakt overlays.
+                        Uri base=new Uri.Builder().scheme("content").authority(authority)
+                            .appendPath("posters").appendPath(item.id+".png").build();
+                        File local=new File(posters,item.id+".png");
+                        saved=copyPoster(ctx,base,local);
+                        if(!saved)saved=copyPoster(ctx,source,local);
+                        if(!saved)item.importedPosterUri=prev.poster;
+                    }
+                }catch(Exception ignored){ /* some providers may not export the file */ }
+            }
+            if(saved)copied++;
+            else if(!item.importedPosterUri.isEmpty())reused++;
+            else missing++;
+            cards.add(item);
+        }
+        long channel=channel(ctx);
+        // Partial-update behavior: NEVER delete anything in our own row on an import.
+        updateCards(ctx,channel,cards,false);
+        int visible=countCards(ctx,channel);
+        ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit()
+            .putInt("import_count",cards.size())
+            .putInt("import_posters_copied",copied)
+            .putString("import_channel",channels.get(bestId))
+            .putLong("import_timestamp",System.currentTimeMillis())
+            .apply();
+        return "Modalita Veezie pronta. Importate "+cards.size()+" schede da '"+
+            channels.get(bestId)+"'.\nSchede presenti nella nuova riga: "+visible+
+            "\nPoster indipendenti copiati: "+copied+
+            "\nPoster condivisi con vecchia versione: "+reused+
+            "\nPoster non disponibili: "+missing+
+            "\nNessun account Trakt richiesto. Le vecchie righe non sono state modificate.";
+    }
+
+    private static boolean copyPoster(Context ctx,Uri source,File target){
+        File temp=new File(target.getAbsolutePath()+".tmp");
+        long count=0;boolean okay=false;
+        try(InputStream input=ctx.getContentResolver().openInputStream(source)){
+            if(input==null)return false;
+            try(OutputStream output=new FileOutputStream(temp)){
+                byte[] buffer=new byte[16384];
+                int n;
+                while((n=input.read(buffer))!=-1){
+                    count+=n;
+                    if(count>4000000L)throw new IOException("Locandina troppo grande");
+                    output.write(buffer,0,n);
+                }
+            }
+            if(count<128)return false;
+            if(target.exists()&&!target.delete())return false;
+            okay=temp.renameTo(target);
+            return okay;
+        }catch(Exception e){
+            android.util.Log.w("FuoconeroTV","Copia poster non disponibile: "+source.getAuthority());
+            return false;
+        }finally{
+            if(!okay)temp.delete();
+        }
+    }
+
     public static void perform(Context ctx,Progress notify)throws Exception {
         if(!SYNC_BUSY.compareAndSet(false,true)){
             notify.say("Una sincronizzazione Trakt e' gia' in corso.");
@@ -631,7 +770,7 @@ public final class TvSync {
         v.put(TvContract.Channels.COLUMN_TYPE,TvContract.Channels.TYPE_PREVIEW);
         v.put(TvContract.Channels.COLUMN_DISPLAY_NAME,CHANNEL_NAME);
         v.put(TvContract.Channels.COLUMN_APP_LINK_INTENT_URI,app.toUri(Intent.URI_INTENT_SCHEME));
-        v.put(TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID,"fuoconero-trakt-020");
+        v.put(TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID,"fuoconero-veezie-033");
         Uri result=c.getContentResolver().insert(TvContract.Channels.CONTENT_URI,v);
         if(result==null)throw new Exception("Android TV non ha creato il canale.");
         long id=ContentUris.parseId(result);
@@ -721,10 +860,15 @@ public final class TvSync {
             String imageName=item.id+(hasProgress?"_progress":hasNext?"_next":"")+".png";
             File imageFile=new File(posterDir,imageName);
             // Changed URI when a poster is regenerated so launcher image caches refresh.
-            Uri poster=new Uri.Builder().scheme("content")
-                .authority("com.fuoconero.tvbridge.test032.images")
-                .appendPath("posters").appendPath(imageName)
-                .appendQueryParameter("v",String.valueOf(imageFile.lastModified())).build();
+            Uri poster;
+            if(!imageFile.isFile() && !item.importedPosterUri.isEmpty()){
+                poster=Uri.parse(item.importedPosterUri);
+            }else{
+                poster=new Uri.Builder().scheme("content")
+                    .authority("com.fuoconero.tvbridge.test033.images")
+                    .appendPath("posters").appendPath(imageName)
+                    .appendQueryParameter("v",String.valueOf(imageFile.lastModified())).build();
+            }
             values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_URI,poster.toString());
             values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_ASPECT_RATIO,TvContract.PreviewPrograms.ASPECT_RATIO_2_3);
             Intent intent=new Intent(c,OpenContentActivity.class);
