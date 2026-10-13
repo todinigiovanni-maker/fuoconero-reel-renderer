@@ -11,6 +11,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import java.util.ArrayDeque;
 import java.util.Locale;
+import android.os.SystemClock;
 
 /**
  * User-initiated, time-limited accessibility navigation of Veezie.
@@ -51,6 +52,7 @@ public class VeezieNavService extends AccessibilityService {
             if(event.getEventType()==AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
                 ||event.getEventType()==AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
                 p.edit().putLong("last_veezie_event",now).apply();
+            if(now<p.getLong("probe_until",0L)) samplePlayback(p,now);
             queue();
             return;
         }
@@ -65,6 +67,64 @@ public class VeezieNavService extends AccessibilityService {
                 SyncJob.requestRefresh(getApplicationContext());
             }
         }
+    }
+    /**
+     * Explicit short-lived probe: reads only exposed playback slider metadata
+     * while Veezie is in the foreground. No screen text or auth data stored.
+     * Never marks episodes watched or guesses a position for a Trakt item.
+     */
+    public static void startPlaybackProbe(Context ctx){
+        long now=System.currentTimeMillis();
+        getPrefs(ctx).edit()
+            .putLong("probe_until",now+120000L)
+            .putLong("probe_last_scan",0L)
+            .putLong("probe_last_candidate",0L)
+            .putInt("probe_last_percent",-1)
+            .putInt("probe_slider_hits",0)
+            .putInt("probe_time_label_count",0)
+            .putString("probe_last_class","")
+            .putString("probe_result","In attesa: apri una puntata in Veezie, visualizza i comandi video per alcuni secondi.")
+            .apply();
+    }
+    private void samplePlayback(SharedPreferences prefs,long now){
+        if(now-prefs.getLong("probe_last_scan",0)<1500L)return;
+        prefs.edit().putLong("probe_last_scan",now).apply();
+        AccessibilityNodeInfo root=getRootInActiveWindow();
+        if(root==null || root.getPackageName()==null ||
+            !"st.veezie".contentEquals(root.getPackageName()))return;
+        ArrayDeque<AccessibilityNodeInfo> stack=new ArrayDeque<>();
+        stack.add(root);
+        int checked=0,timeCount=0;
+        while(!stack.isEmpty()&&checked++<350){
+            AccessibilityNodeInfo node=stack.removeFirst();
+            if(node.isVisibleToUser() && node.getPackageName()!=null &&
+                "st.veezie".contentEquals(node.getPackageName())){
+                String cls=node.getClassName()==null?"":node.getClassName().toString().toLowerCase(Locale.ROOT);
+                String id=node.getViewIdResourceName()==null?"":node.getViewIdResourceName().toLowerCase(Locale.ROOT);
+                String shown=node.getText()==null?"":node.getText().toString().trim();
+                if(shown.matches("[0-9]{1,2}:[0-9]{2}(:[0-9]{2})?"))timeCount++;
+                boolean slider=cls.contains("seekbar")||cls.contains("slider")||
+                    id.contains("seekbar")||id.endsWith("/seek");
+                AccessibilityNodeInfo.RangeInfo range=slider?node.getRangeInfo():null;
+                if(range!=null && range.getMax()>range.getMin()){
+                    float frac=(range.getCurrent()-range.getMin())/(range.getMax()-range.getMin());
+                    if(Float.isFinite(frac) && frac>=0 && frac<=1){
+                        int percent=Math.round(frac*100f);
+                        prefs.edit().putLong("probe_last_candidate",now)
+                            .putInt("probe_last_percent",percent)
+                            .putInt("probe_slider_hits",prefs.getInt("probe_slider_hits",0)+1)
+                            .putString("probe_last_class",cls.length()>75?cls.substring(0,75):cls)
+                            .putString("probe_result","Barra visibile rilevata dentro Veezie. NON ancora associata a una puntata.")
+                            .apply();
+                    }
+                }
+            }
+            for(int i=0;i<node.getChildCount();i++){
+                AccessibilityNodeInfo c=node.getChild(i);
+                if(c!=null)stack.addLast(c);
+            }
+        }
+        if(timeCount>0)prefs.edit().putInt("probe_time_label_count",timeCount).apply();
     }
     @Override public void onInterrupt(){halt("Interrotto");}
     @Override public void onDestroy(){
@@ -257,7 +317,14 @@ public class VeezieNavService extends AccessibilityService {
             "\nAmbito: solo interfaccia di Veezie"+
             "\nAutomazione avviata: "+(p.getBoolean("pending",false)?"SI":"NO")+
             "\nUltimo stato: "+p.getString("result","non ancora provata")+
-            "\nLimite: 25 secondi; nessun clic se il titolo non e' riconosciuto"+
+            "\nLimite ricerca: 25 secondi; nessun clic se il titolo non e' riconosciuto"+
+            "\nSonda riproduzione: "+(System.currentTimeMillis()<p.getLong("probe_until",0L)?"ATTIVA (2 min)":"NON ATTIVA")+
+            "\nBarre Veezie osservate: "+p.getInt("probe_slider_hits",0)+
+            "\nUltima barra osservata: "+(p.getInt("probe_last_percent",-1)<0?"non rilevata":
+                p.getInt("probe_last_percent",-1)+"% (NON verificata come avanzamento puntata)")+
+            "\nIndicatori temporali visibili: "+p.getInt("probe_time_label_count",0)+
+            "\nEsito sonda: "+p.getString("probe_result","non ancora eseguita")+
+            "\nAggiornamento automatico Trakt: richiesto al ritorno in Projectivy, soggetto a cooldown"+
             "\nRevochi il permesso in Impostazioni > Accessibilita.";
     }
     public static boolean isEnabled(Context ctx){
