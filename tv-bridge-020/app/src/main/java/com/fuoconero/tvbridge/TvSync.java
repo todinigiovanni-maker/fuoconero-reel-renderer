@@ -658,8 +658,13 @@ public final class TvSync {
                 new File(posterDir,item.id+"_progress.png").isFile();
             boolean hasNext=!hasProgress && item.episode && item.episodesRemaining>=0 &&
                 new File(posterDir,item.id+"_next.png").isFile();
-            Uri poster=Uri.parse("content://com.fuoconero.tvbridge.test027.images/posters/"+
-                item.id+(hasProgress?"_progress":hasNext?"_next":"")+".png");
+            String imageName=item.id+(hasProgress?"_progress":hasNext?"_next":"")+".png";
+            File imageFile=new File(posterDir,imageName);
+            // Changed URI when a poster is regenerated so launcher image caches refresh.
+            Uri poster=new Uri.Builder().scheme("content")
+                .authority("com.fuoconero.tvbridge.test027.images")
+                .appendPath("posters").appendPath(imageName)
+                .appendQueryParameter("v",String.valueOf(imageFile.lastModified())).build();
             values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_URI,poster.toString());
             values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_ASPECT_RATIO,TvContract.PreviewPrograms.ASPECT_RATIO_2_3);
             Intent intent=new Intent(c,OpenContentActivity.class);
