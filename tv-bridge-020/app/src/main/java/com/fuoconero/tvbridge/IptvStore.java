@@ -1,0 +1,204 @@
+package com.fuoconero.tvbridge;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteOpenHelper;
+import android.database.sqlite.SQLiteStatement;
+import android.net.Uri;
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/** Private, on-device index for large user-provided M3U files. Never uploads a stream URL. */
+public final class IptvStore extends SQLiteOpenHelper {
+    public interface Progress { void say(String message); }
+    public static final String PREFS="iptv_settings";
+    public static final String[] PUBLIC_GROUPS={"TV Italia","Sport","Documentari","Film","Serie"};
+    public static final class Media {
+        public long id;
+        public String title,category,group,url,kind;
+        public boolean adult,fav;
+    }
+    private static final Pattern GROUP=Pattern.compile("(?:^|\\s)group-title=\"([^\"]*)\"");
+    private static final Pattern NAME=Pattern.compile("(?:^|\\s)tvg-name=\"([^\"]*)\"");
+    public IptvStore(Context c){super(c,"fuoconero_iptv.db",null,1);}
+    @Override public void onCreate(SQLiteDatabase db){
+        db.execSQL("CREATE TABLE entries(id INTEGER PRIMARY KEY AUTOINCREMENT, ident TEXT NOT NULL UNIQUE, title TEXT NOT NULL, grp TEXT NOT NULL, url TEXT NOT NULL, category TEXT NOT NULL, kind TEXT NOT NULL, adult INTEGER NOT NULL, seen INTEGER NOT NULL, first_seen INTEGER NOT NULL, fav INTEGER NOT NULL DEFAULT 0)");
+        db.execSQL("CREATE INDEX idx_iptv_cat ON entries(category,adult,id)");
+        db.execSQL("CREATE INDEX idx_iptv_title ON entries(title)");
+        db.execSQL("CREATE INDEX idx_iptv_new ON entries(first_seen)");
+        db.execSQL("CREATE INDEX idx_iptv_fav ON entries(fav,adult,id)");
+    }
+    @Override public void onUpgrade(SQLiteDatabase db,int oldV,int newV){}
+    private static String attr(Pattern p,String info){
+        Matcher m=p.matcher(info);
+        return m.find()?m.group(1).trim():"";
+    }
+    private static String clean(String text,int max){
+        if(text==null)return "";
+        return text.replaceAll("[\\p{Cntrl}&&[^\\t]]"," ").trim().substring(0,Math.min(text.trim().length(),max));
+    }
+    private static boolean isAdult(String group,String title){
+        String x=(group+" "+title).toLowerCase(Locale.ROOT);
+        return x.contains("xxx")||x.contains("x x x")||x.contains("adult")||
+            x.contains("porno")||x.contains("porn ")||x.contains("hot vip")||
+            x.contains("18+")||x.contains("erotic")||x.contains("sex ")||
+            x.contains("onlyfans");
+    }
+    private static String classify(String group,String title,boolean adult,String url){
+        if(adult)return "Adulti";
+        String g=group.toLowerCase(Locale.ROOT);
+        String u=url.toLowerCase(Locale.ROOT);
+        if(g.contains("documentar")||g.contains("history channel")||
+            g.contains("discovery+")||g.contains("national geographic")||
+            g.contains("bbc earth"))return "Documentari";
+        if(g.contains("dazn")||g.contains("sky sport")||
+            g.contains("sport")||g.contains("espn")||g.contains("calcio")||
+            g.contains("champions")||g.contains("serie a")||g.contains("formula 1"))
+            return "Sport";
+        if(u.contains("/series/")||g.contains("serie ")||g.contains("series")||
+            g.contains("anime")||g.contains("cartoni")||g.contains("disney+")||
+            g.contains("netflix series"))return "Serie";
+        if(u.contains("/movie/")||g.contains("film")||
+            g.contains("cinema")||g.contains("vod -")||g.contains("movie"))
+            return "Film";
+        if(g.contains("top italia")||g.contains("italia")||
+            g.contains("italy")||g.contains("rai")||g.contains("mediaset"))
+            return "TV Italia";
+        return "Altri canali";
+    }
+    private static String identity(String title,String grp,String url)throws Exception {
+        MessageDigest sha=MessageDigest.getInstance("SHA-256");
+        byte[] hash=sha.digest((grp+"\n"+title+"\n"+url).getBytes(StandardCharsets.UTF_8));
+        StringBuilder b=new StringBuilder(32);
+        for(int i=0;i<16;i++)b.append(String.format(Locale.ROOT,"%02x",hash[i]&255));
+        return b.toString();
+    }
+    /**
+     * Indexes up to 400,000 items from the stream without loading the entire
+     * 91 MB playlist in memory. One transaction makes failed imports reversible.
+     */
+    public String importPlaylist(Context context,InputStream input,Progress progress)throws Exception{
+        SharedPreferences prefs=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
+        long now=System.currentTimeMillis(),count=0;
+        SQLiteDatabase db=getWritableDatabase();
+        long prev=prefs.getLong("successful_imports",0);
+        String sql="INSERT OR REPLACE INTO entries(ident,title,grp,url,category,kind,adult,seen,first_seen,fav) "+
+            "VALUES(?,?,?,?,?,?,?,?,COALESCE((SELECT first_seen FROM entries WHERE ident=?),?),COALESCE((SELECT fav FROM entries WHERE ident=?),0))";
+        db.beginTransaction();
+        try(BufferedReader reader=new BufferedReader(new InputStreamReader(input,StandardCharsets.UTF_8),65536)){
+            SQLiteStatement put=db.compileStatement(sql);
+            String line,info=null;
+            while((line=reader.readLine())!=null){
+                if(Thread.currentThread().isInterrupted())throw new IOException("Importazione interrotta");
+                if(line.startsWith("#EXTINF:")){
+                    info=line;
+                }else if(!line.startsWith("#")&&info!=null){
+                    String url=line.trim();
+                    if(!(url.startsWith("https://")||url.startsWith("http://"))||
+                        url.length()>2048){info=null;continue;}
+                    String grp=clean(attr(GROUP,info),180);
+                    int comma=info.lastIndexOf(',');
+                    String title=comma>=0?info.substring(comma+1):attr(NAME,info);
+                    title=clean(title,200);
+                    if(title.length()<2){info=null;continue;}
+                    boolean adult=isAdult(grp,title);
+                    String category=classify(grp,title,adult,url);
+                    String kind=url.toLowerCase(Locale.ROOT).contains("/movie/")?"Film":
+                        url.toLowerCase(Locale.ROOT).contains("/series/")?"Video":
+                        "TV";
+                    String ident=identity(title,grp,url);
+                    put.clearBindings();
+                    put.bindString(1,ident);
+                    put.bindString(2,title);
+                    put.bindString(3,grp);
+                    put.bindString(4,url);
+                    put.bindString(5,category);
+                    put.bindString(6,kind);
+                    put.bindLong(7,adult?1:0);
+                    put.bindLong(8,now);
+                    put.bindString(9,ident);
+                    put.bindLong(10,now);
+                    put.bindString(11,ident);
+                    put.executeInsert();
+                    count++;
+                    info=null;
+                    if(count>400000)throw new IOException("La lista supera il limite di 400.000 voci");
+                    if(count%50000==0 && progress!=null)progress.say("Indicizzati "+count+" contenuti...");
+                }
+            }
+            if(count<1)throw new IOException("Il file non contiene flussi M3U validi.");
+            db.execSQL("DELETE FROM entries WHERE seen<>?",new Object[]{now});
+            db.setTransactionSuccessful();
+        }finally{db.endTransaction();}
+        prefs.edit().putLong("last_success",now)
+            .putLong("item_count",count)
+            .putLong("successful_imports",prev+1).apply();
+        return "Playlist indicizzata: "+count+" contenuti; categorie pronte. "+
+            (prev==0?"Primo caricamento: nessuna novita' ancora confrontabile.":"Novita' confrontate con l'importazione precedente.");
+    }
+    public long count(){
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT COUNT(*) FROM entries",null)){
+            return c.moveToFirst()?c.getLong(0):0;
+        }
+    }
+    public long countCategory(String category){
+        String filter="fav".equals(category)?"fav=1 AND adult=0":
+            "new".equals(category)?"first_seen>(SELECT COALESCE(MAX(last_success),0) FROM (SELECT 0 AS last_success)) AND adult=0":
+            "Adulti".equals(category)?"adult=1":"category=? AND adult=0";
+        String[] args=("fav".equals(category)||"new".equals(category)||"Adulti".equals(category))?
+            null:new String[]{category};
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT COUNT(*) FROM entries WHERE "+filter,args)){
+            return c.moveToFirst()?c.getLong(0):0;
+        }
+    }
+    public ArrayList<Media> list(String category,String search,int offset,int limit){
+        ArrayList<Media> result=new ArrayList<>();
+        ArrayList<String> args=new ArrayList<>();
+        StringBuilder query=new StringBuilder("SELECT id,title,grp,url,category,kind,adult,fav FROM entries WHERE ");
+        if("Preferiti".equals(category))query.append("fav=1 AND adult=0");
+        else if("Adulti".equals(category))query.append("adult=1");
+        else if("Tutti".equals(category))query.append("adult=0");
+        else{query.append("category=? AND adult=0");args.add(category);}
+        if(search!=null && !search.trim().isEmpty()){
+            query.append(" AND (title LIKE ? ESCAPE '\\' OR grp LIKE ? ESCAPE '\\')");
+            String safe=search.trim().replace("\\","\\\\").replace("%","\\%").replace("_","\\_");
+            args.add("%"+safe+"%");args.add("%"+safe+"%");
+        }
+        query.append(" ORDER BY id ASC LIMIT ? OFFSET ?");
+        args.add(String.valueOf(Math.min(75,Math.max(1,limit))));
+        args.add(String.valueOf(Math.max(0,offset)));
+        try(Cursor c=getReadableDatabase().rawQuery(query.toString(),args.toArray(new String[0]))){
+            while(c.moveToNext()){
+                Media m=new Media();m.id=c.getLong(0);m.title=c.getString(1);
+                m.group=c.getString(2);m.url=c.getString(3);
+                m.category=c.getString(4);m.kind=c.getString(5);
+                m.adult=c.getInt(6)!=0;m.fav=c.getInt(7)!=0;
+                result.add(m);
+            }
+        }
+        return result;
+    }
+    public Media find(long id){
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT id,title,grp,url,category,kind,adult,fav FROM entries WHERE id=?",
+            new String[]{String.valueOf(id)})){
+            if(!c.moveToFirst())return null;
+            Media m=new Media();m.id=c.getLong(0);m.title=c.getString(1);
+            m.group=c.getString(2);m.url=c.getString(3);m.category=c.getString(4);
+            m.kind=c.getString(5);m.adult=c.getInt(6)!=0;m.fav=c.getInt(7)!=0;
+            return m;
+        }
+    }
+    public void toggleFavorite(long id){
+        getWritableDatabase().execSQL("UPDATE entries SET fav=1-fav WHERE id=?",new Object[]{id});
+    }
+}
