@@ -20,7 +20,7 @@ import java.security.MessageDigest;
 public final class TvSync {
     public interface Progress { void say(String text); }
     private static final String PREFS="tvbridge";
-    private static final String CHANNEL_NAME="Fuoconero · Trakt 0.2.5 TEST";
+    private static final String CHANNEL_NAME="Fuoconero · Trakt 0.2.6 TEST";
     private static class Item {
         String id,title,description,image,imdb;
         boolean episode;
@@ -36,8 +36,15 @@ public final class TvSync {
         JSONArray history=trakt.getArray("/sync/history?limit=60&extended=full");
         ingest(trakt,history,items,false,30);
         boolean complete=true;
+        int playbackEntries=-1, playbackWithProgress=0;
         try {
             JSONArray playback=trakt.getArray("/sync/playback?extended=full");
+            playbackEntries=playback.length();
+            for(int i=0;i<playback.length();i++){
+                JSONObject event=playback.optJSONObject(i);
+                if(event!=null && event.optDouble("progress",-1)>0
+                    && event.optDouble("progress",-1)<100)playbackWithProgress++;
+            }
             mergePlayback(playback,items,30);
         } catch(TraktApi.ApiError e) {
             if(e.code==403 || e.code==404) {
@@ -50,10 +57,21 @@ public final class TvSync {
         if(items.isEmpty())throw new Exception("Trakt non ha restituito film o episodi recenti. La riga esistente non è stata modificata.");
         notify.say("Trakt: "+items.size()+" titoli. Scarico le locandine...");
         ArrayList<Item> cards=new ArrayList<>(items.values());
-        int realPosters=0;
+        int realPosters=0,progressCards=0,progressWithRuntime=0,progressImages=0;
         for(Item item:cards) {
             if(imageFor(ctx,item))realPosters++;
+            if(item.progress>0 && item.progress<100){
+                progressCards++;
+                if(item.runtimeMinutes>0)progressWithRuntime++;
+                if(drawProgressPoster(ctx,item))progressImages++;
+            }
         }
+        ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit()
+            .putInt("last_playback_items",playbackEntries)
+            .putInt("last_playback_with_progress",playbackWithProgress)
+            .putInt("last_cards_with_progress",progressCards)
+            .putInt("last_cards_with_runtime",progressWithRuntime)
+            .putInt("last_progress_posters",progressImages).apply();
         long channel=channel(ctx);
         updateCards(ctx,channel,cards,complete);
         int visible=countCards(ctx,channel);
@@ -61,7 +79,10 @@ public final class TvSync {
         notify.say("Trakt: "+cards.size()+" titoli. Schede realmente presenti nel canale Android TV: "+visible+
             ".\nLocandine reali in cache: "+realPosters+"; segnaposto: "+(cards.size()-realPosters)+
             (complete?"":"\nSincronizzazione parziale: non ho eliminato le vecchie schede.")+
-            "\nLe schede aprono la HOME di Veezie. Se qui risultano 30 e Projectivy ne mostra una, controlla la configurazione del launcher.");
+            "\nTrakt playback: "+playbackEntries+"; con percentuale: "+playbackWithProgress+
+            "; schede con percentuale: "+progressCards+"; con durata: "+progressWithRuntime+
+            "; poster con barra: "+progressImages+
+            "\nL'apertura diretta dell'episodio in Veezie non e' ancora disponibile.");
     }
     public static String diagnose(Context ctx)throws Exception {
         long id=ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getLong("channel_id",-1);
@@ -89,13 +110,19 @@ public final class TvSync {
                 if(!cur.isNull(6)&&cur.getLong(6)>0)withProgress++;
             }
         }
+        SharedPreferences stats=ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
         return "Schede Android TV: "+cards+
             "\nCollegamenti distinti: "+intents.size()+
             "\nContent ID distinti: "+ids.size()+
             "\nPoster con URI: "+withPoster+
             "\nSchede browsable: "+browsable+
-            "\nBarra avanzamento disponibile: "+withProgress+
-            "\nIl conteggio misura Android TV, non le tessere renderizzate da Projectivy.";
+            "\nBarra nativa Android TV: "+withProgress+
+            "\nElementi playback da Trakt: "+stats.getInt("last_playback_items",-1)+
+            "\nElementi playback con %: "+stats.getInt("last_playback_with_progress",0)+
+            "\nSchede con %: "+stats.getInt("last_cards_with_progress",0)+
+            "\nSchede con % e durata: "+stats.getInt("last_cards_with_runtime",0)+
+            "\nLocandine con barra visibile: "+stats.getInt("last_progress_posters",0)+
+            "\nLa barra sul poster appare solo se l'API Trakt comunica un progresso parziale.";
     }
     public static int countCards(Context c) throws Exception {
         long id=c.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getLong("channel_id",-1);
@@ -131,13 +158,14 @@ public final class TvSync {
             if(items.containsKey(key))continue;
             Item t=new Item();t.episode=ep;t.id=key;
             t.title=media.optString("title","Senza titolo");t.imdb=ids.optString("imdb","");
-            t.runtimeMinutes=ep?0:Math.max(0,media.optInt("runtime",0));
+            t.runtimeMinutes=Math.max(0,media.optInt("runtime",0)); // show's average episode runtime is a fallback
             JSONObject episode=entry.optJSONObject("episode");
             if(ep && episode!=null){
                 t.season=String.valueOf(episode.optInt("season",0));
                 t.episodeNumber=String.valueOf(episode.optInt("number",0));
                 t.episodeTitle=episode.optString("title","");
-                t.runtimeMinutes=Math.max(0,episode.optInt("runtime",0));
+                int episodeRuntime=Math.max(0,episode.optInt("runtime",0));
+                if(episodeRuntime>0)t.runtimeMinutes=episodeRuntime;
                 String code=String.format(Locale.ITALY,"S%02dE%02d",episode.optInt("season"),episode.optInt("number"));
                 t.description=(paused?"In pausa: ":"Ultimo episodio visto: ")+code+" · "+t.episodeTitle;
             }else t.description=paused?"Riproduzione in corso":"Nel tuo storico Trakt";
@@ -176,7 +204,9 @@ public final class TvSync {
                 item.season=String.valueOf(ep.optInt("season",0));
                 item.episodeNumber=String.valueOf(ep.optInt("number",0));
                 item.episodeTitle=ep.optString("title","");
-                item.runtimeMinutes=Math.max(0,ep.optInt("runtime",0));
+                int episodeRuntime=Math.max(0,ep.optInt("runtime",0));
+                if(episodeRuntime>0)item.runtimeMinutes=episodeRuntime;
+                else if(item.runtimeMinutes<=0)item.runtimeMinutes=Math.max(0,media.optInt("runtime",0));
                 String code=String.format(Locale.ITALY,"S%02dE%02d",ep.optInt("season"),ep.optInt("number"));
                 item.description="In pausa: "+code+" · "+item.episodeTitle;
             } else if(!episode) {
@@ -297,6 +327,52 @@ public final class TvSync {
         }
         return real;
     }
+    private static boolean drawProgressPoster(Context ctx,Item item){
+        if(item.progress<=0 || item.progress>=100)return false;
+        File folder=new File(ctx.getFilesDir(),"posters");
+        File original=new File(folder,item.id+".png");
+        File output=new File(folder,item.id+"_progress.png");
+        if(!original.isFile())return false;
+        Bitmap bmp=null;
+        try{
+            bmp=BitmapFactory.decodeFile(original.getAbsolutePath());
+            if(bmp==null)return false;
+            Bitmap editable=bmp.copy(Bitmap.Config.ARGB_8888,true);
+            bmp.recycle();bmp=null;
+            if(editable==null)return false;
+            int w=editable.getWidth(),h=editable.getHeight();
+            Canvas canvas=new Canvas(editable);
+            Paint bg=new Paint(Paint.ANTI_ALIAS_FLAG);
+            bg.setColor(0xDD101828);
+            canvas.drawRect(0,h*0.87f,w,h,bg);
+            Paint text=new Paint(Paint.ANTI_ALIAS_FLAG);
+            text.setColor(Color.WHITE);
+            text.setTypeface(Typeface.create("sans-serif",Typeface.BOLD));
+            text.setTextSize(Math.max(16f,w*0.068f));
+            long percent=Math.round(item.progress);
+            canvas.drawText(percent+"% visto",w*0.065f,h*0.93f,text);
+            Paint track=new Paint(Paint.ANTI_ALIAS_FLAG);
+            track.setColor(0xFF626977);
+            float x=w*0.065f,barTop=h*0.95f,barBottom=h*0.97f,barWidth=w*0.87f;
+            canvas.drawRoundRect(x,barTop,x+barWidth,barBottom,8,8,track);
+            track.setColor(0xFFFF843F);
+            canvas.drawRoundRect(x,barTop,x+barWidth*(float)(item.progress/100.0),
+                barBottom,8,8,track);
+            File temp=new File(folder,item.id+"_progress.tmp");
+            boolean okay;
+            try(FileOutputStream out=new FileOutputStream(temp)){
+                okay=editable.compress(Bitmap.CompressFormat.PNG,90,out);
+            }
+            editable.recycle();
+            if(!okay){temp.delete();return false;}
+            if(output.exists()&&!output.delete()){temp.delete();return false;}
+            if(!temp.renameTo(output)){temp.delete();return false;}
+            return true;
+        }catch(Exception ex){
+            android.util.Log.w("FuoconeroTV","Progress poster failure",ex);
+            return false;
+        }finally{if(bmp!=null)bmp.recycle();}
+    }
     private static long channel(Context c)throws Exception {
         SharedPreferences prefs=c.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
         long old=prefs.getLong("channel_id",-1);
@@ -374,7 +450,10 @@ public final class TvSync {
                     Math.min(total,Math.round(total*item.progress/100.0)));
             }
             values.put(TvContract.PreviewPrograms.COLUMN_WEIGHT,999-i);
-            Uri poster=Uri.parse("content://com.fuoconero.tvbridge.test025.images/posters/"+item.id+".png");
+            boolean overlay=(item.progress>0 && item.progress<100 &&
+                new File(new File(c.getFilesDir(),"posters"),item.id+"_progress.png").isFile());
+            Uri poster=Uri.parse("content://com.fuoconero.tvbridge.test026.images/posters/"+
+                item.id+(overlay?"_progress":"")+".png");
             values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_URI,poster.toString());
             values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_ASPECT_RATIO,TvContract.PreviewPrograms.ASPECT_RATIO_2_3);
             Intent intent=new Intent(c,OpenContentActivity.class);
