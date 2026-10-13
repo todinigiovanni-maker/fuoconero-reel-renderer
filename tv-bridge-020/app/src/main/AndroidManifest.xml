@@ -5,7 +5,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="com.android.providers.tv.permission.WRITE_EPG_DATA" />
-    <application android:label="Fuoconero IPTV 0.5.0 CLEAN"
+    <application android:label="Fuoconero IPTV 0.5.1 CLEAN"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:usesCleartextTraffic="true"
         android:icon="@android:drawable/ic_media_play"
@@ -21,7 +21,7 @@
             android:permission="android.permission.BIND_JOB_SERVICE"
             android:exported="false" />
         <provider android:name=".PosterProvider"
-            android:authorities="com.fuoconero.iptv.clean050.images"
+            android:authorities="com.fuoconero.iptv.clean051.images"
             android:exported="true" android:grantUriPermissions="true" />
     </application>
 </manifest>
