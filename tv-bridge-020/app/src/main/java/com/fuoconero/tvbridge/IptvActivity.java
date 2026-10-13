@@ -55,7 +55,7 @@ public class IptvActivity extends Activity {
         setContentView(scroll);
 
         label(root,"FUOCONERO · IPTV",30,0xffff984c,true);
-        label(root,"0.5.1 CLEAN · Database protetto durante importazioni M3U di grandi dimensioni",15,0xffc3cbde,false);
+        label(root,"0.5.2 LIBRERIA · Serie raggruppate, nuove uscite, DAZN e cronologia locale",15,0xffc3cbde,false);
         playlistLabel=new TextView(this);
         playlistLabel.setTextColor(Color.WHITE);
         playlistLabel.setTextSize(22);
@@ -115,7 +115,7 @@ public class IptvActivity extends Activity {
         });
         label(root,"Questa app non importa automaticamente i canali stranieri: usa la playlist italiana selezionata. La lista originale resta intatta.",14,0xffc3cbde,false);
         label(root,"LE TUE CATEGORIE",20,Color.WHITE,true);
-        for(String c:new String[]{"Preferiti","Novita","TV Italia","Sport","Documentari","Film","Serie","Altri canali","Tutti"}){
+        for(String c:new String[]{"Continua","Ultimi film","Ultime serie","Preferiti","TV Italia","Sport","DAZN","Documentari","Film","Serie","Altri canali","Tutti"}){
             button(root,"▶ "+("Novita".equals(c)?"Novità della playlist":c),()->showCategory(c,0,""));
         }
         button(root,"🔒 Area riservata adulti (PIN)",()->unlockAdult(()->showAdultHome()));
@@ -141,6 +141,11 @@ public class IptvActivity extends Activity {
         if(category!=null && !category.isEmpty()){
             if(category.startsWith("Adulti"))unlockAdult(()->showAdultHome());
             else showCategory(category,0,"");
+        }
+        String seriesKey=getIntent().getStringExtra("series_key");
+        if(seriesKey!=null && !seriesKey.isEmpty()){
+            String seriesTitle=getIntent().getStringExtra("series_title");
+            showSeriesEpisodes(seriesKey,seriesTitle==null?"Serie":seriesTitle,0);
         }
     }
     @Override protected void onActivityResult(int request,int result,Intent data){
@@ -344,8 +349,17 @@ public class IptvActivity extends Activity {
         if(category.startsWith("Adulti")&&!isAdultUnlocked()){
             unlockAdult(()->showCategory(category,0,""));return;
         }
+        if(category.equals("Serie")||category.equals("Ultime serie")){
+            showSeriesList(category,nextPage,term);return;
+        }
+        if(category.equals("Ultimi film")||category.equals("Continua")){
+            showSpecialList(category,nextPage);return;
+        }
         currentCategory=category;page=nextPage;
         contentArea.removeAllViews();
+        if(category.equals("Sport")){
+            button(contentArea,"⚽ DAZN · Vedi tutti i canali",()->showCategory("DAZN",0,""));
+        }
         label(contentArea,category+" · pagina "+(page+1),21,Color.WHITE,true);
         if(searchInput==null || searchInput.getParent()!=contentArea){
             searchInput=new EditText(this);
@@ -403,6 +417,116 @@ public class IptvActivity extends Activity {
             }catch(Exception e){showStatus("Ricerca IPTV: "+e.getMessage());}
         });
     }
+
+    private void openMedia(long id){
+        Intent intent=new Intent(this,IptvPlayActivity.class);
+        intent.putExtra("id",id);
+        startActivity(intent);
+    }
+    private void showSeriesList(String category,int at,String term){
+        currentCategory=category;page=at;
+        contentArea.removeAllViews();
+        label(contentArea,category+" · una scheda per serie",21,Color.WHITE,true);
+        EditText filter=new EditText(this);
+        filter.setTextColor(Color.WHITE);
+        filter.setHintTextColor(0xffa6b4c8);
+        filter.setSingleLine(true);
+        filter.setHint("Cerca una serie");
+        filter.setText(term);
+        contentArea.addView(filter);
+        button(contentArea,"🔎 Cerca",()->showSeriesList(category,0,filter.getText().toString()));
+        button(contentArea,"← Categorie",()->{contentArea.removeAllViews();currentCategory="";});
+        worker.execute(()->{
+            try(IptvLibrary library=new IptvLibrary(this)){
+                ArrayList<IptvLibrary.Show> rows=library.shows(term,at*35,35,category.equals("Ultime serie"));
+                runOnUiThread(()->{
+                    if(!category.equals(currentCategory)||page!=at)return;
+                    if(rows.isEmpty())label(contentArea,"Nessuna serie trovata.",17,0xffc7d1df,false);
+                    for(IptvLibrary.Show show:rows){
+                        button(contentArea,"📺 "+show.title+"  ·  "+show.count+" episodi",()->
+                            showSeriesEpisodes(show.key,show.title,0));
+                    }
+                    if(rows.size()==35)button(contentArea,"Pagina successiva →",()->
+                        showSeriesList(category,at+1,filter.getText().toString()));
+                    if(at>0)button(contentArea,"← Pagina precedente",()->
+                        showSeriesList(category,at-1,filter.getText().toString()));
+                });
+            }catch(Exception e){showStatus("Serie: "+e.getMessage());}
+        });
+    }
+    private void showSeriesEpisodes(String key,String title,int at){
+        String marker="Serie:"+key;
+        currentCategory=marker;page=at;
+        contentArea.removeAllViews();
+        label(contentArea,title+" · episodi",22,Color.WHITE,true);
+        button(contentArea,"← Tutte le serie",()->showSeriesList("Serie",0,""));
+        worker.execute(()->{
+            try(IptvLibrary library=new IptvLibrary(this);
+                IptvStore store=new IptvStore(this)){
+                ArrayList<IptvLibrary.Episode> rows=library.episodes(key,at*45,45);
+                ArrayList<String> labels=new ArrayList<>();
+                for(IptvLibrary.Episode ep:rows){
+                    IptvStore.Media item=store.find(ep.id);
+                    if(item!=null)labels.add((ep.season>0?
+                        String.format(Locale.ITALY,"S%02d E%02d · ",ep.season,ep.number):
+                        "")+item.title);
+                    else labels.add(ep.title);
+                }
+                runOnUiThread(()->{
+                    if(!marker.equals(currentCategory)||page!=at)return;
+                    if(rows.isEmpty())label(contentArea,"Nessuna puntata disponibile.",16,0xffc7d1df,false);
+                    for(int i=0;i<rows.size();i++){
+                        long id=rows.get(i).id;
+                        String labelText=labels.get(i);
+                        button(contentArea,"▶ "+labelText,()->openMedia(id));
+                    }
+                    if(rows.size()==45)button(contentArea,"Altri episodi →",()->
+                        showSeriesEpisodes(key,title,at+1));
+                    if(at>0)button(contentArea,"← Episodi precedenti",()->
+                        showSeriesEpisodes(key,title,at-1));
+                });
+            }catch(Exception e){showStatus("Episodi: "+e.getMessage());}
+        });
+    }
+    private void showSpecialList(String category,int at){
+        currentCategory=category;page=at;
+        contentArea.removeAllViews();
+        label(contentArea,category,21,Color.WHITE,true);
+        if(category.equals("Ultimi film"))
+            label(contentArea,"Primo caricamento: ordine della playlist. Dai successivi aggiornamenti: nuove aggiunte effettive.",14,0xffc7d1df,false);
+        if(category.equals("Continua"))
+            label(contentArea,"Cronologia di Fuoconero IPTV: non legge lo storico privato di IPTV Extreme.",14,0xffc7d1df,false);
+        button(contentArea,"← Categorie",()->{contentArea.removeAllViews();currentCategory="";});
+        worker.execute(()->{
+            try(IptvLibrary library=new IptvLibrary(this)){
+                ArrayList<IptvStore.Media> films=category.equals("Ultimi film")?
+                    library.newestFilms(at*35,35):new ArrayList<>();
+                ArrayList<IptvLibrary.Recent> history=category.equals("Continua")?
+                    library.recentlyOpened(35):new ArrayList<>();
+                runOnUiThread(()->{
+                    if(!category.equals(currentCategory)||page!=at)return;
+                    if(category.equals("Ultimi film")){
+                        if(films.isEmpty())label(contentArea,"Nessuna nuova aggiunta.",16,0xffc7d1df,false);
+                        for(IptvStore.Media m:films)button(contentArea,"🎬 "+m.title,()->openMedia(m.id));
+                        if(films.size()==35)button(contentArea,"Altri film →",()->
+                            showSpecialList(category,at+1));
+                        if(at>0)button(contentArea,"← Film precedenti",()->
+                            showSpecialList(category,at-1));
+                    }else{
+                        if(history.isEmpty())label(contentArea,"Ancora nessuna riproduzione registrata in Fuoconero IPTV.",16,0xffc7d1df,false);
+                        for(IptvLibrary.Recent h:history){
+                            String percent=h.durationMs>0?
+                                " · riprendi da "+Math.round(h.positionMs*100.0/h.durationMs)+"%":
+                                " · aperto di recente";
+                            button(contentArea,"▶ "+h.media.title+percent,()->
+                                openMedia(h.media.id));
+                        }
+                    }
+                });
+            }catch(Exception e){showStatus(category+": "+e.getMessage());}
+        });
+    }
+
     private void showAdultHome(){
         contentArea.removeAllViews();
         currentCategory="";
