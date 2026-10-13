@@ -45,7 +45,7 @@ public class MainActivity extends Activity {
         setContentView(scroll);
 
         label("FUOCONERO · IPTV EDITION",29,0xffff8c48,true);
-        label("0.4.0 TEST · Modulo IPTV che affianca la 0.3.6 funzionante.",17,Color.WHITE,false);
+        label("0.4.1 TEST · Modulo IPTV che affianca la 0.3.6 funzionante.",17,Color.WHITE,false);
         label("Apri subito IPTV qui sotto. La 0.3.6 continua a gestire Veezie e Trakt.",15,0xffcbd1df,false);
         button("▶ ENTRA IN FUOCONERO IPTV",()->{
             startActivity(new Intent(this,IptvActivity.class));
@@ -117,7 +117,7 @@ public class MainActivity extends Activity {
             try{
                 startActivity(new android.content.Intent(
                     android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));
-                status("Abilita soltanto Fuoconero TV Bridge 0.4.0 TEST; disabilita i servizi delle vecchie versioni per evitare doppie azioni.");
+                status("Abilita soltanto Fuoconero TV Bridge 0.4.1 TEST; disabilita i servizi delle vecchie versioni per evitare doppie azioni.");
             }catch(Exception e){status("Apri Impostazioni TV > Accessibilita. "+e.getMessage());}
         });
         button("8 · Test lettura tempi Veezie (2 minuti)",()->{
@@ -134,7 +134,7 @@ public class MainActivity extends Activity {
                     TvSync.ensureStarter(this);
                     runOnUiThread(()->{
                         TvSync.requestVisibility(this);
-                        status("Richiesta di visibilita' inviata. Se necessario abilita la riga Fuoconero · Veezie/Trakt 0.4.0 TEST in Projectivy.");
+                        status("Richiesta di visibilita' inviata. Se necessario abilita la riga Fuoconero · Veezie/Trakt 0.4.1 TEST in Projectivy.");
                     });
                 }catch(Exception e){status("Canale: "+e.getMessage());}
             });
