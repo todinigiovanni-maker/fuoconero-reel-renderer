@@ -22,12 +22,12 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Android SDK (current)
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
       - name: Android API 35
-        run: |
-          export ANDROID_HOME=/usr/local/lib/android/sdk
-          export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
-          /usr/local/lib/android/sdk/cmdline-tools/16.0/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - name: Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
