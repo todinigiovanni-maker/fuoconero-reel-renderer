@@ -55,7 +55,7 @@ public class IptvActivity extends Activity {
         setContentView(scroll);
 
         label(root,"FUOCONERO · IPTV",30,0xffff984c,true);
-        label(root,"0.5.0 CLEAN · Nuovo catalogo IPTV separato, ottimizzato per Sony",15,0xffc3cbde,false);
+        label(root,"0.5.1 CLEAN · Database protetto durante importazioni M3U di grandi dimensioni",15,0xffc3cbde,false);
         playlistLabel=new TextView(this);
         playlistLabel.setTextColor(Color.WHITE);
         playlistLabel.setTextSize(22);
@@ -80,9 +80,12 @@ public class IptvActivity extends Activity {
         button(root,"3 · AGGIORNA LISTA ORA",this::refresh);
         button(root,"4 · IMPORTA PLAYLIST ITALIANA DA DOWNLOAD",this::importFromDownloads);
         button(root,"5 · DIAGNOSTICA CATALOGO",()->{
+            if(IptvRefreshJob.isUpdating()){
+                showStatus("Importazione M3U ancora in corso. Attendi il messaggio di completamento prima della diagnostica.");
+                return;
+            }
             worker.execute(()->{
-                try{
-                    IptvStore store=new IptvStore(this);
+                try(IptvStore store=new IptvStore(this)){
                     long total=store.count();
                     StringBuilder diagnostic=new StringBuilder("Catalogo locale: "+total+" contenuti");
                     for(String cat:IptvStore.PUBLIC_GROUPS){
@@ -91,10 +94,15 @@ public class IptvActivity extends Activity {
                     }
                     diagnostic.append("\\nSe il catalogo e' vuoto, importa prima il file M3U dalla cartella Download.");
                     showStatus(diagnostic.toString());
-                }catch(Exception e){showStatus("Diagnostica: "+e.getMessage());}
+                }catch(Exception e){showStatus("Diagnostica: "+e.getMessage()+
+                    ". Se stai importando la lista, attendi che finisca e riprova.");}
             });
         });
         button(root,"6 · MOSTRA LE CATEGORIE IN PROJECTIVY",()->{
+            if(IptvRefreshJob.isUpdating()){
+                showStatus("Importazione in corso. Le schede saranno pubblicate automaticamente alla fine.");
+                return;
+            }
             worker.execute(()->{
                 try{
                     if(new IptvStore(this).count()==0){
@@ -116,10 +124,19 @@ public class IptvActivity extends Activity {
         contentArea.setPadding(0,12,0,0);
         root.addView(contentArea);
         IptvRefreshJob.schedule(this);
-        long count=new IptvStore(this).count();
-        showStatus(count==0?
-            "Catalogo vuoto. Copia Fuoconero_IPTV_Italia_Selezione.m3u in Download, poi premi 4.":
-            "Catalogo pronto: "+count+" contenuti. Aggiornamento automatico programmato se la fonte resta accessibile.");
+        showStatus("Verifico il catalogo locale...");
+        worker.execute(()->{
+            if(IptvRefreshJob.isUpdating()){
+                showStatus("Importazione in corso: attendi il completamento prima di usare la diagnostica.");
+                return;
+            }
+            try(IptvStore store=new IptvStore(this)){
+                long count=store.count();
+                showStatus(count==0?
+                    "Catalogo vuoto. Copia Fuoconero_IPTV_Italia_Selezione.m3u in Download, poi premi 4.":
+                    "Catalogo pronto: "+count+" contenuti. Premi 5 per la diagnostica.");
+            }catch(Exception e){showStatus("Catalogo temporaneamente occupato: attendi la fine dell'importazione e riprova.");}
+        });
         String category=getIntent().getStringExtra("category");
         if(category!=null && !category.isEmpty()){
             if(category.startsWith("Adulti"))unlockAdult(()->showAdultHome());
