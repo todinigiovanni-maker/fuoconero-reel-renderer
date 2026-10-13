@@ -31,7 +31,16 @@ public final class IptvStore extends SQLiteOpenHelper {
     private static final Pattern GROUP=Pattern.compile("(?:^|\\s)group-title=\"([^\"]*)\"");
     private static final Pattern NAME=Pattern.compile("(?:^|\\s)tvg-name=\"([^\"]*)\"");
     private final Context app;
-    public IptvStore(Context c){super(c,"fuoconero_iptv.db",null,1);app=c.getApplicationContext();}
+    public IptvStore(Context c){
+        super(c,"fuoconero_iptv.db",null,1);
+        app=c.getApplicationContext();
+        // Readers must be able to inspect the catalog while a large M3U is indexing.
+        setWriteAheadLoggingEnabled(true);
+    }
+    @Override public void onConfigure(SQLiteDatabase db){
+        super.onConfigure(db);
+        db.execSQL("PRAGMA busy_timeout=30000");
+    }
     @Override public void onCreate(SQLiteDatabase db){
         db.execSQL("CREATE TABLE entries(id INTEGER PRIMARY KEY AUTOINCREMENT, ident TEXT NOT NULL UNIQUE, title TEXT NOT NULL, grp TEXT NOT NULL, url TEXT NOT NULL, category TEXT NOT NULL, kind TEXT NOT NULL, adult INTEGER NOT NULL, seen INTEGER NOT NULL, first_seen INTEGER NOT NULL, fav INTEGER NOT NULL DEFAULT 0)");
         db.execSQL("CREATE INDEX idx_iptv_cat ON entries(category,adult,id)");
@@ -98,7 +107,7 @@ public final class IptvStore extends SQLiteOpenHelper {
         // stable across a refresh of the very same playlist.
         String sql="INSERT OR REPLACE INTO entries(id,ident,title,grp,url,category,kind,adult,seen,first_seen,fav) "+
             "VALUES((SELECT id FROM entries WHERE ident=?),?,?,?,?,?,?,?,?,COALESCE((SELECT first_seen FROM entries WHERE ident=?),?),COALESCE((SELECT fav FROM entries WHERE ident=?),0))";
-        db.beginTransaction();
+        db.beginTransactionNonExclusive();
         try(BufferedReader reader=new BufferedReader(new InputStreamReader(input,StandardCharsets.UTF_8),65536)){
             SQLiteStatement put=db.compileStatement(sql);
             String line,info=null;
