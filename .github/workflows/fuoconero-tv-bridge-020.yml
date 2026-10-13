@@ -32,6 +32,13 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      # Persist ONLY the temporary debug signing key between GitHub Actions runs.
+      # Future 0.5.x test APKs can then update without reinstalling the app.
+      - name: Stable development signing identity
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: fuoconero-iptv-052-test-signing-v1
       - name: Build APK
         working-directory: tv-bridge-020
         run: gradle --no-daemon --stacktrace :app:assembleDebug
