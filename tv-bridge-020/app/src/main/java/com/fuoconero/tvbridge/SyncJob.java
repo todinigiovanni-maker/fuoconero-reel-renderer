@@ -24,6 +24,7 @@ public class SyncJob extends JobService {
         new Thread(()->{
             try{
                 SharedPreferences state=getSharedPreferences("tvbridge",MODE_PRIVATE);
+                if(state.getBoolean("prefer_veezie",true))return;
                 long now=System.currentTimeMillis();
                 long previous=state.getLong("last_sync_started",0L);
                 if(previous>0 && now-previous<MIN_INTERVAL_MS){
@@ -47,6 +48,8 @@ public class SyncJob extends JobService {
     @Override public boolean onStopJob(JobParameters params){return true;}
 
     public static void requestRefresh(Context context){
+        if(context.getSharedPreferences("tvbridge",Context.MODE_PRIVATE)
+            .getBoolean("prefer_veezie",true))return;
         String access=context.getSharedPreferences("trakt",Context.MODE_PRIVATE)
             .getString("access_token","");
         if(access==null || access.isEmpty())return; // Veezie Edition runs without Trakt.
@@ -67,6 +70,8 @@ public class SyncJob extends JobService {
     }
 
     public static void schedule(Context context){
+        if(context.getSharedPreferences("tvbridge",Context.MODE_PRIVATE)
+            .getBoolean("prefer_veezie",true))return;
         String access=context.getSharedPreferences("trakt",Context.MODE_PRIVATE)
             .getString("access_token","");
         if(access==null || access.isEmpty())return;
