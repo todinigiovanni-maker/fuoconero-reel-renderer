@@ -25,7 +25,7 @@ public class MainActivity extends Activity {
         ScrollView sv=new ScrollView(this); sv.setFillViewport(true); sv.addView(root);
         setContentView(sv);
         label("FUOCONERO · TV BRIDGE",30,Color.rgb(255,128,58),true);
-        label("Versione 0.2.0 · Lo storico Trakt diventa una riga nella home Projectivy.",17,Color.WHITE,false);
+        label("Versione 0.2.4 · Lo storico Trakt diventa una riga nella home Projectivy.",17,Color.WHITE,false);
         label("Le locandine aprono la HOME di Veezie: l'apertura dell'episodio è ancora da sviluppare.",15,0xffcccfde,false);
         label("Client ID Trakt (dalla propria app developer.trakt.tv/apps):",17,Color.WHITE,false);
         clientId=input("Client ID Trakt",p.getString("client_id",""),false);
@@ -61,6 +61,13 @@ public class MainActivity extends Activity {
             getSharedPreferences("trakt",MODE_PRIVATE).edit()
                 .remove("access_token").remove("refresh_token").remove("expires_at").apply();
             status("Account scollegato localmente; la riga rimane finché non la elimini.");
+        });
+        button("6 · Controlla quante schede sono pubblicate", () -> {
+            pool.execute(() -> {
+                try {status("Schede presenti nel canale Android TV: "+TvSync.countCards(this)+
+                    ".\\nSe qui sono 30 ma Projectivy ne mostra solo una, controlla il launcher.");}
+                catch(Exception e){status("Errore controllo schede: "+e.getMessage());}
+            });
         });
         status=new TextView(this);status.setTextSize(18);status.setTextColor(0xffeeecf5);
         status.setPadding(0,24,0,0); root.addView(status);
