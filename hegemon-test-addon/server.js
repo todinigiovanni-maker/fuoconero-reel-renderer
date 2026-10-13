@@ -14,8 +14,9 @@ function send(res,code,data){
 }
 const server = http.createServer((req,res)=>{
   const p = new URL(req.url || '/', 'http://localhost').pathname;
+  console.log('[HTTP]',req.method,p);
   if(req.method==='OPTIONS') {res.writeHead(204,{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'GET,OPTIONS'}); return res.end();}
-  if(req.method!=='GET')return send(res,405,{error:'GET only'});
+  if(req.method!=='GET' && req.method!=='HEAD')return send(res,405,{error:'GET or HEAD only'});
   if(p==='/' || p==='/health')return send(res,200,{status:'ok',addon:manifest.name});
   if(p==='/manifest.json')return send(res,200,manifest);
   if(p==='/catalog/movie/fuoconero_test.json')return send(res,200,{metas:[movie]});
@@ -29,3 +30,10 @@ const server = http.createServer((req,res)=>{
   return send(res,404,{error:'Not found'});
 });
 server.listen(Number(process.env.PORT)||10000,'0.0.0.0',()=>console.log('Fuoconero Hegemon MP4 test ready'));
+
+setTimeout(async () => {
+  try {
+    const response = await fetch('https://fuoconero-hegemon-mp4-test.onrender.com/manifest.json', {signal: AbortSignal.timeout(12000)});
+    console.log('[PUBLIC CHECK]',response.status,response.headers.get('content-type'),(await response.text()).slice(0,100));
+  } catch(e) {console.log('[PUBLIC CHECK FAILED]',String(e));}
+},8000);
