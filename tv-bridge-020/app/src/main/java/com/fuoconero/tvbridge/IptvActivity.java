@@ -79,7 +79,19 @@ public class IptvActivity extends Activity {
         button(root,"2 · IMPOSTA LINK M3U",this::promptPlaylistUrl);
         button(root,"3 · AGGIORNA LISTA ORA",this::refresh);
         button(root,"4 · IMPORTA FILE M3U DA DOWNLOAD",this::importFromDownloads);
-        button(root,"5 · MOSTRA LE CATEGORIE IN PROJECTIVY",()->{
+        button(root,"5 · RECUPERA CATALOGO 0.4.1 (backup ADB)",()->{
+            showStatus("Controllo il backup della vecchia versione. Non cancello nulla.");
+            worker.execute(()->{
+                try{
+                    String restored=IptvMigration.restore(this);
+                    showStatus(restored);
+                    try{showStatus(restored+"\n"+IptvPublisher.publish(this));}
+                    catch(Exception e){showStatus(restored+"\nProjectivy: "+e.getMessage());}
+                }catch(Exception e){showStatus("Recupero non riuscito: "+e.getMessage()+
+                    ". La 0.4.1 rimane intatta.")}
+            });
+        });
+        button(root,"6 · MOSTRA LE CATEGORIE IN PROJECTIVY",()->{
             worker.execute(()->{
                 try{showStatus(IptvPublisher.publish(this));}
                 catch(Exception e){showStatus("Projectivy: "+e.getMessage());}
