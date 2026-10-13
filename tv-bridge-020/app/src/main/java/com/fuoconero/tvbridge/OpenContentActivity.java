@@ -33,7 +33,19 @@ public class OpenContentActivity extends Activity {
             display+=" S"+season+"E"+episode;
         }
         String mode="ERRORE_APERTURA";
-        if(!title.trim().isEmpty()){
+        // Accessibility permission is explicitly granted in Sony TV Settings.
+        // The service is limited to Veezie and to the current card request.
+        if(!title.trim().isEmpty() && VeezieNavService.isEnabled(this)){
+            VeezieNavService.request(this,title,season==null?"":season,
+                episode==null?"":episode);
+            if(openVeezie(this)){
+                mode="NAVIGAZIONE_AUTOMATICA_RICHIESTA";
+                Toast.makeText(this,"Cerco "+title+" in Veezie (max 25 s)",Toast.LENGTH_LONG).show();
+            }else{
+                VeezieNavService.cancel(this);
+                mode="VEEZIE_NON_INSTALLATA";
+            }
+        }else if(!title.trim().isEmpty()){
             // Clipboard is a usable fallback when Veezie has no search intent.
             // Keep only a title, never tokens or IDs.
             try{
@@ -79,7 +91,7 @@ public class OpenContentActivity extends Activity {
         deep.setPackage(VEEZIE);
         boolean schemeAvailable=deep.resolveActivity(ctx.getPackageManager())!=null;
         SharedPreferences p=ctx.getSharedPreferences("veezie_launch",MODE_PRIVATE);
-        return "Veezie installata: "+(home?"SI":"NO")+
+        return VeezieNavService.diagnose(ctx)+"\nVeezie installata: "+(home?"SI":"NO")+
             "\nRicerca esterna Android disponibile: "+(searchAvailable?"SI":"NO")+
             "\nSchema veezie:// dichiarato: "+(schemeAvailable?"SI":"NO")+
             "\nLink preciso al singolo titolo: NON documentato"+
