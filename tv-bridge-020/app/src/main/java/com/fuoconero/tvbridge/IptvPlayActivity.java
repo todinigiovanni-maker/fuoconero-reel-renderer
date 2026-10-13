@@ -6,6 +6,8 @@ import android.graphics.Color;
 import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -23,6 +25,13 @@ public class IptvPlayActivity extends Activity {
     private TextView status;
     private VideoView video;
     private boolean active=false;
+    private final Handler handler=new Handler(Looper.getMainLooper());
+    private final Runnable heartbeat=new Runnable(){
+        @Override public void run(){
+            savePlayback();
+            handler.postDelayed(this,10000L);
+        }
+    };
 
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
@@ -41,6 +50,9 @@ public class IptvPlayActivity extends Activity {
                 return;
             }
         }
+        try(IptvLibrary library=new IptvLibrary(this)){
+            library.markOpened(media.id);
+        }catch(Exception e){android.util.Log.w("FuoconeroIPTV","Recent open unavailable",e);}
         LinearLayout screen=new LinearLayout(this);
         screen.setOrientation(LinearLayout.VERTICAL);
         screen.setPadding(22,18,22,18);
@@ -72,9 +84,24 @@ public class IptvPlayActivity extends Activity {
         addButton(actions,"← Indietro",this::finish);
         video.setOnPreparedListener(mp->{
             mp.setOnInfoListener((player,what,extra)->false);
-            status.setText("Riproduzione avviata · "+media.group);
+            long[] previous={0,0};
+            try(IptvLibrary library=new IptvLibrary(this)){
+                previous=library.playback(media.id);
+            }catch(Exception ignored){}
+            int duration=video.getDuration();
+            if(previous[0]>3000 && duration>0 &&
+                previous[0]<(long)duration*95/100 &&
+                !("TV".equals(media.kind))){
+                video.seekTo((int)Math.min(Integer.MAX_VALUE,previous[0]));
+                status.setText("Riprendo da "+Math.round(previous[0]/60000.0)+" minuti");
+            }else status.setText("Riproduzione avviata · "+media.group);
             video.start();
         });
+        video.setOnCompletionListener(mp->{
+            savePlayback();
+            status.setText("Riproduzione completata");
+        });
+        handler.postDelayed(heartbeat,10000L);
         video.setOnErrorListener((mp,what,extra)->{
             active=false;
             status.setText("Il lettore integrato non supporta questo flusso, oppure la fonte "+
@@ -137,11 +164,35 @@ public class IptvPlayActivity extends Activity {
             if(status!=null)status.setText("Nessun lettore esterno compatibile installato.");
         }
     }
+    private void savePlayback(){
+        if(video==null || media==null)return;
+        try{
+            int duration=video.getDuration();
+            int position=video.getCurrentPosition();
+            if(duration>0 && duration<12*3600*1000 && position>=0 &&
+                !"TV".equals(media.kind)){
+                try(IptvLibrary library=new IptvLibrary(this)){
+                    library.saveProgress(media.id,position,duration);
+                }
+            }
+        }catch(Exception e){android.util.Log.w("FuoconeroIPTV","Unable to save position",e);}
+    }
     @Override protected void onPause(){
+        savePlayback();
         if(video!=null && video.isPlaying())video.pause();
+        handler.removeCallbacks(heartbeat);
+        new Thread(()->{
+            try{IptvPublisher.publish(getApplicationContext());}
+            catch(Exception e){android.util.Log.w("FuoconeroIPTV","Projectivy watchlist refresh skipped",e);}
+        },"FuoconeroWatchlistUpdate").start();
         super.onPause();
     }
+    @Override protected void onResume(){
+        super.onResume();
+        if(video!=null)handler.postDelayed(heartbeat,10000L);
+    }
     @Override protected void onDestroy(){
+        handler.removeCallbacks(heartbeat);
         if(video!=null)video.stopPlayback();
         super.onDestroy();
     }
