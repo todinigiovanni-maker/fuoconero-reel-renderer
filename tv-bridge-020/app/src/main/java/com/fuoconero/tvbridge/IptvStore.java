@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
 public final class IptvStore extends SQLiteOpenHelper {
     public interface Progress { void say(String message); }
     public static final String PREFS="iptv_settings";
-    public static final String[] PUBLIC_GROUPS={"TV Italia","Sport","Documentari","Film","Serie"};
+    public static final String[] PUBLIC_GROUPS={"Continua","Ultimi film","Ultime serie","TV Italia","Sport","DAZN","Documentari","Film","Serie"};
     public static final class Media {
         public long id;
         public String title,category,group,url,kind;
@@ -186,6 +186,10 @@ public final class IptvStore extends SQLiteOpenHelper {
             args.add(String.valueOf(app.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
                 .getLong("new_from",Long.MAX_VALUE)));
         }
+        else if("DAZN".equals(category)){
+            query.append("category='Sport' AND adult=0 AND (title LIKE ? OR grp LIKE ?)");
+            args.add("%DAZN%");args.add("%DAZN%");
+        }
         else if("Adulti".equals(category))query.append("adult=1");
         else if("Adulti TV".equals(category))query.append("adult=1 AND kind='TV'");
         else if("Adulti Video".equals(category))query.append("adult=1 AND kind<>'TV'");
@@ -196,6 +200,8 @@ public final class IptvStore extends SQLiteOpenHelper {
             String safe=search.trim().replace("\\","\\\\").replace("%","\\%").replace("_","\\_");
             args.add("%"+safe+"%");args.add("%"+safe+"%");
         }
+        // Distinguish real TV channels from VOD; never surface category headers.
+        query.append(" AND title NOT LIKE '---%' AND title NOT LIKE '-- %'");
         query.append(" ORDER BY id ASC LIMIT ? OFFSET ?");
         args.add(String.valueOf(Math.min(75,Math.max(1,limit))));
         args.add(String.valueOf(Math.max(0,offset)));
