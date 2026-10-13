@@ -25,8 +25,8 @@ public class MainActivity extends Activity {
         ScrollView sv=new ScrollView(this); sv.setFillViewport(true); sv.addView(root);
         setContentView(sv);
         label("FUOCONERO · TV BRIDGE TEST",30,Color.rgb(255,128,58),true);
-        label("Versione 0.2.7 TEST · Prossimi episodi e puntate mancanti, senza inventare una barra di riproduzione.",17,Color.WHITE,false);
-        label("Le locandine aprono la HOME di Veezie: l'apertura dell'episodio è ancora da sviluppare.",15,0xffcccfde,false);
+        label("Versione 0.2.8 TEST · Barra SERIE distinta dal progresso della singola puntata.",17,Color.WHITE,false);
+        label("Le schede provano una ricerca Android in Veezie; se non supportata aprono la home copiando il titolo.",15,0xffcccfde,false);
         label("Client ID Trakt (dalla propria app developer.trakt.tv/apps):",17,Color.WHITE,false);
         clientId=input("Client ID Trakt",p.getString("client_id",""),false);
         label("Client Secret (lascia vuoto se non richiesto da Trakt):",15,0xffcccfde,false);
@@ -68,7 +68,10 @@ public class MainActivity extends Activity {
                 catch(Exception e){status("Errore controllo schede: "+e.getMessage());}
             });
         });
-        status=new TextView(this);status.setTextSize(18);status.setTextColor(0xffeeecf5);
+        button("7 · Diagnostica apertura Veezie", () -> {
+            status(OpenContentActivity.diagnoseVeezie(this));
+        });
+                status=new TextView(this);status.setTextSize(18);status.setTextColor(0xffeeecf5);
         status.setPadding(0,24,0,0); root.addView(status);
         status(p.getString("access_token","").isEmpty()?"Pronto: collega Trakt per mostrare le locandine.":"Trakt già autorizzato. Premi Sincronizza.");
         SyncJob.schedule(this);
