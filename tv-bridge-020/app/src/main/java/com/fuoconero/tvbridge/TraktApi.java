@@ -158,7 +158,7 @@ public final class TraktApi {
             byte[] buf=new byte[4096];int n;int total=0;
             while((n=stream.read(buf))!=-1){
                 total+=n;
-                if(total>1024*1024)throw new Exception("Risposta Trakt troppo grande");
+                if(total>3*1024*1024)throw new Exception("Risposta Trakt troppo grande");
                 out.write(buf,0,n);
             }
             return out.toString("UTF-8");
