@@ -88,7 +88,7 @@ public class IptvActivity extends Activity {
                     try{showStatus(restored+"\n"+IptvPublisher.publish(this));}
                     catch(Exception e){showStatus(restored+"\nProjectivy: "+e.getMessage());}
                 }catch(Exception e){showStatus("Recupero non riuscito: "+e.getMessage()+
-                    ". La 0.4.1 rimane intatta.")}
+                    ". La 0.4.1 rimane intatta.");}
             });
         });
         button(root,"6 · MOSTRA LE CATEGORIE IN PROJECTIVY",()->{
