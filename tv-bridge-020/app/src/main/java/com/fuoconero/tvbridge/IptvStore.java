@@ -176,7 +176,119 @@ public final class IptvStore extends SQLiteOpenHelper {
             return c.moveToFirst()?c.getLong(0):0;
         }
     }
+    /**
+     * Live television: show only an explicitly labelled HD/FHD/UHD variant,
+     * one per named channel. SD, catch-up +1/+2/+3 and repeated providers
+     * never take a second slot in Projectivy or in the TV catalog.
+     *
+     * This only changes the presentation, never deletes original M3U rows.
+     */
+    private static final java.util.regex.Pattern HD_QUALITY=java.util.regex.Pattern.compile(
+        "(?i)\\b(?:FULL\\s*HD|FHD|HD|UHD|4K|720P|1080P|2160P|HDR)\\b");
+    private static final java.util.regex.Pattern REMOVE_QUALITY=java.util.regex.Pattern.compile(
+        "(?i)\\b(?:FULL\\s*HD|FHD|HD|UHD|4K|SD|RAW|HEVC|H\\.?265|H\\.?264|HDR|720P|1080P|2160P)\\b");
+    private static boolean liveCategory(String category){
+        return "TV Italia".equals(category)||"Sport".equals(category)||"DAZN".equals(category);
+    }
+    private static String canonicalLiveName(String original){
+        String t=original.toUpperCase(Locale.ROOT);
+        t=REMOVE_QUALITY.matcher(t).replaceAll(" ");
+        t=t.replaceAll("\\+\\s*[123]\\b"," ");
+        t=t.replaceAll("[^A-Z0-9 ]"," ").replaceAll("\\s+"," ").trim();
+        // DAZN 1 - SERIE B - ASCOLI is a temporary alternate feed, not a
+        // separate permanent channel DAZN 1. Preserve DAZN 10 versus DAZN 1.
+        java.util.regex.Matcher special=java.util.regex.Pattern.compile(
+            "^DAZN\\s+(\\d{1,2})(?:\\s+.*)?$").matcher(t);
+        if(special.matches())return "DAZN "+Integer.parseInt(special.group(1));
+        return t;
+    }
+    private static int qualityScore(String title,String key){
+        String u=title.toUpperCase(Locale.ROOT);
+        if(!HD_QUALITY.matcher(u).find())return -1; // no SD or unknown resolution
+        int score=0;
+        if(u.matches(".*\\bHD\\b.*")&&!u.matches(".*\\bFULL\\s*HD\\b.*"))score=600;
+        else if(u.matches(".*\\b(?:FHD|FULL\\s*HD|1080P)\\b.*"))score=550;
+        else if(u.matches(".*\\b(?:UHD|4K|2160P)\\b.*"))score=500;
+        else score=450;
+        if(u.matches(".*\\+\\s*[123]\\b.*"))score-=220;
+        if(u.matches(".*\\b(?:H265|HEVC|H\\.265)\\b.*"))score-=15;
+        String cleaned=REMOVE_QUALITY.matcher(u).replaceAll(" ")
+            .replaceAll("\\+\\s*[123]\\b"," ")
+            .replaceAll("[^A-Z0-9 ]"," ").replaceAll("\\s+"," ").trim();
+        if(cleaned.equals(key))score+=130; // prefer main named channel
+        return score;
+    }
+    private static int priority(String name,String category){
+        if("TV Italia".equals(category)){
+            if(name.matches("RAI 1"))return 0;
+            if(name.matches("RAI 2"))return 1;
+            if(name.matches("RAI 3"))return 2;
+            if(name.matches("RETE 4"))return 3;
+            if(name.matches("CANALE 5"))return 4;
+            if(name.matches("ITALIA 1"))return 5;
+            if(name.matches("LA 7|LA7"))return 6;
+            if(name.matches("NOVE|DISCOVERY NOVE"))return 7;
+        }
+        if(name.matches("DAZN [0-9]{1,2}"))
+            return Integer.parseInt(name.substring(5));
+        if(name.equals("SKY SPORT UNO"))return 30;
+        if(name.equals("SKY SPORT CALCIO"))return 31;
+        return 1000;
+    }
+    private ArrayList<Media> uniqueHdLive(String category,String search,int offset,int limit){
+        java.util.LinkedHashMap<String,Media> selected=new java.util.LinkedHashMap<>();
+        java.util.HashMap<String,Integer> bestScores=new java.util.HashMap<>();
+        String sql="SELECT id,title,grp,url,category,kind,adult,fav FROM entries "+
+            "WHERE category IN ('TV Italia','Sport') AND kind='TV' AND adult=0 "+
+            "AND title NOT LIKE '---%' ORDER BY id ASC";
+        try(Cursor c=getReadableDatabase().rawQuery(sql,null)){
+            while(c.moveToNext()){
+                Media m=new Media();
+                m.id=c.getLong(0);m.title=c.getString(1);m.group=c.getString(2);
+                m.url=c.getString(3);m.category=c.getString(4);
+                m.kind=c.getString(5);m.adult=false;m.fav=c.getInt(7)!=0;
+                if(!"DAZN".equals(category)&&!category.equals(m.category))continue;
+                if("DAZN".equals(category)&&!m.title.toUpperCase(Locale.ROOT).startsWith("DAZN"))continue;
+                String key=canonicalLiveName(m.title);
+                if(key.length()<2)continue;
+                if("DAZN".equals(category)&&key.contains(" ")){
+                    // Keep permanent channels, not matches and team-specific event aliases.
+                    if(!key.matches("DAZN (?:[0-9]{1,2}|CHANNEL|SPORT SERIE A [0-9]{1,2})"))
+                        continue;
+                }
+                int score=qualityScore(m.title,key);
+                if(score<0)continue;
+                Integer old=bestScores.get(key);
+                if(old==null||score>old){
+                    bestScores.put(key,score);
+                    selected.put(key,m);
+                }
+            }
+        }
+        java.util.ArrayList<java.util.Map.Entry<String,Media>> sorted=
+            new java.util.ArrayList<>(selected.entrySet());
+        sorted.sort((a,b)->{
+            int x=priority(a.getKey(),category),y=priority(b.getKey(),category);
+            if(x!=y)return Integer.compare(x,y);
+            return a.getKey().compareTo(b.getKey());
+        });
+        String filter=search==null?"":search.trim().toLowerCase(Locale.ROOT);
+        ArrayList<Media> result=new ArrayList<>();
+        int skip=Math.max(0,offset),cap=Math.min(75,Math.max(1,limit));
+        for(java.util.Map.Entry<String,Media> e:sorted){
+            Media m=e.getValue();
+            if(!filter.isEmpty()&&!m.title.toLowerCase(Locale.ROOT).contains(filter)&&
+                !e.getKey().toLowerCase(Locale.ROOT).contains(filter)&&
+                !m.group.toLowerCase(Locale.ROOT).contains(filter))continue;
+            if(skip-->0)continue;
+            result.add(m);
+            if(result.size()>=cap)break;
+        }
+        return result;
+    }
+
     public ArrayList<Media> list(String category,String search,int offset,int limit){
+        if(liveCategory(category))return uniqueHdLive(category,search,offset,limit);
         ArrayList<Media> result=new ArrayList<>();
         ArrayList<String> args=new ArrayList<>();
         StringBuilder query=new StringBuilder("SELECT id,title,grp,url,category,kind,adult,fav FROM entries WHERE ");
