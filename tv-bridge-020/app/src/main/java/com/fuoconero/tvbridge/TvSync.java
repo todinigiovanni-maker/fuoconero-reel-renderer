@@ -20,7 +20,7 @@ import java.security.MessageDigest;
 public final class TvSync {
     public interface Progress { void say(String text); }
     private static final String PREFS="tvbridge";
-    private static final String CHANNEL_NAME="Fuoconero · Trakt 0.2.7 TEST";
+    private static final String CHANNEL_NAME="Fuoconero · Trakt 0.2.8 TEST";
     private static class Item {
         String id,title,description,image,imdb;
         boolean episode;
@@ -29,6 +29,7 @@ public final class TvSync {
         String season="",episodeNumber="",episodeTitle="";
         String nextSeason="",nextEpisodeNumber="",nextEpisodeTitle="";
         int episodesRemaining=-1,nextRuntimeMinutes=0;
+        int episodesWatched=-1,episodesTotal=-1;
     }
     private TvSync(){}
     public static void perform(Context ctx,Progress notify)throws Exception {
@@ -61,7 +62,7 @@ public final class TvSync {
         try {
             // July 2026 Trakt change: watched episode breakdown needs extended=progress.
             // Limit the size: one summary page, not 30 individual metadata requests.
-            JSONArray watched=trakt.getArray("/sync/watched/shows?page=1&limit=50&extended=progress");
+            JSONArray watched=trakt.getArray("/sync/watched/shows?page=1&limit=100&extended=progress");
             watchedShows=watched.length();
             addRemaining(watched,items);
         }catch(TraktApi.ApiError e){
@@ -105,6 +106,7 @@ public final class TvSync {
         notify.say("Trakt: "+items.size()+" titoli. Scarico le locandine...");
         ArrayList<Item> cards=new ArrayList<>(items.values());
         int realPosters=0,progressCards=0,progressWithRuntime=0,progressImages=0,nextPosters=0;
+        int seriesBars=0,seriesWithoutProgress=0;
         for(Item item:cards) {
             if(imageFor(ctx,item))realPosters++;
             if(item.progress>0 && item.progress<100){
@@ -113,6 +115,8 @@ public final class TvSync {
                 if(drawProgressPoster(ctx,item))progressImages++;
             }else if(item.episode && item.episodesRemaining>=0){
                 if(drawNextPoster(ctx,item))nextPosters++;
+                if(item.episodesTotal>0 && item.episodesWatched>=0)seriesBars++;
+                else seriesWithoutProgress++;
             }
         }
         ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit()
@@ -124,7 +128,9 @@ public final class TvSync {
             .putInt("last_watched_shows",watchedShows)
             .putInt("last_shows_with_remaining",showsWithRemaining)
             .putInt("last_shows_with_next",showsWithNext)
-            .putInt("last_next_posters",nextPosters).apply();
+            .putInt("last_next_posters",nextPosters)
+            .putInt("last_series_bars",seriesBars)
+            .putInt("last_series_missing_progress",seriesWithoutProgress).apply();
         long channel=channel(ctx);
         updateCards(ctx,channel,cards,complete);
         int visible=countCards(ctx,channel);
@@ -137,6 +143,7 @@ public final class TvSync {
             "; poster con barra: "+progressImages+
             "; riepiloghi serie: "+showsWithRemaining+
             "; prossimi episodi verificati: "+showsWithNext+
+            "; barre avanzamento serie: "+seriesBars+
             "\nIl tempo indicato nelle schede delle serie e' la durata dell'episodio, non la posizione di riproduzione.");
     }
     public static String diagnose(Context ctx)throws Exception {
@@ -181,6 +188,8 @@ public final class TvSync {
             "\nSchede con episodi restanti: "+stats.getInt("last_shows_with_remaining",0)+
             "\nSchede con prossimo episodio certo: "+stats.getInt("last_shows_with_next",0)+
             "\nPoster con info prossima puntata: "+stats.getInt("last_next_posters",0)+
+            "\nBarre avanzamento SERIE: "+stats.getInt("last_series_bars",0)+
+            "\nSerie senza % affidabile: "+stats.getInt("last_series_missing_progress",0)+
             "\nLa barra sul poster appare solo se l'API Trakt comunica un progresso parziale.";
     }
     public static int countCards(Context c) throws Exception {
@@ -419,14 +428,21 @@ public final class TvSync {
                     }
                 }
             }
-            item.episodesRemaining=Math.max(0,aired-watchedCount);
+            if(watchedCount<=aired){
+                item.episodesWatched=watchedCount;
+                item.episodesTotal=aired;
+                item.episodesRemaining=aired-watchedCount;
+            }
         }
     }
     private static void applyNextDetails(Item item,JSONObject detail){
         if(detail==null)return;
         int aired=detail.optInt("aired",-1),completed=detail.optInt("completed",-1);
-        if(aired>=0 && completed>=0)
-            item.episodesRemaining=Math.max(0,aired-completed);
+        if(aired>0 && completed>=0 && completed<=aired){
+            item.episodesWatched=completed;
+            item.episodesTotal=aired;
+            item.episodesRemaining=aired-completed;
+        }
         JSONObject next=detail.optJSONObject("next_episode");
         if(next!=null && next.optInt("season",-1)>0 && next.optInt("number",-1)>0){
             item.nextSeason=String.format(Locale.ITALY,"%02d",next.optInt("season"));
@@ -477,7 +493,9 @@ public final class TvSync {
             Canvas canvas=new Canvas(bitmap);
             Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
             boolean hasNext=!item.nextSeason.isEmpty();
-            float top=height*(hasNext?0.795f:0.84f);
+            boolean seriesProgress=item.episodesTotal>0 && item.episodesWatched>=0 &&
+                item.episodesWatched<=item.episodesTotal;
+            float top=height*(seriesProgress?0.73f:(hasNext?0.795f:0.84f));
             p.setColor(0xEC131C2C);
             canvas.drawRect(0,top,width,height,p);
             p.setTypeface(Typeface.create("sans-serif",Typeface.BOLD));
@@ -496,6 +514,23 @@ public final class TvSync {
                 p.setColor(0xFFD1D9E9);
                 String label=(item.nextRuntimeMinutes>0?"Durata: ":"Durata media: ")+runtime+" min";
                 canvas.drawText(label,width*0.055f,top+height*0.165f,p);
+            }
+            if(seriesProgress){
+                double percent=100.0*item.episodesWatched/item.episodesTotal;
+                p.setTextSize(Math.max(13f,width*0.048f));
+                p.setColor(Color.WHITE);
+                canvas.drawText("SERIE "+Math.round(percent)+"%  ("+
+                    item.episodesWatched+"/"+item.episodesTotal+")",
+                    width*0.055f,height*0.915f,p);
+                float x=width*0.055f, topBar=height*0.944f, bottomBar=height*0.961f;
+                float barWidth=width*0.89f;
+                p.setColor(0xFF596276);
+                canvas.drawRoundRect(x,topBar,x+barWidth,bottomBar,8,8,p);
+                if(percent>0){
+                    p.setColor(0xFFFF843F);
+                    canvas.drawRoundRect(x,topBar,x+barWidth*(float)(percent/100.0),
+                        bottomBar,8,8,p);
+                }
             }
             File temp=new File(folder,item.id+"_next.tmp");
             boolean saved;
@@ -630,6 +665,10 @@ public final class TvSync {
                     if(!item.nextEpisodeTitle.isEmpty())d.append(" · ").append(item.nextEpisodeTitle);
                 }
                 if(item.episodesRemaining>=0)d.append(" · ").append(item.episodesRemaining).append(" episodi rimanenti");
+                if(item.episodesTotal>0 && item.episodesWatched>=0)
+                    d.append(" · Serie ").append(Math.round(100.0*item.episodesWatched/item.episodesTotal))
+                        .append("% (").append(item.episodesWatched).append("/")
+                        .append(item.episodesTotal).append(")");
                 if(item.nextRuntimeMinutes>0)d.append(" · ").append(item.nextRuntimeMinutes).append(" min");
                 else if(item.runtimeMinutes>0 && item.episodesRemaining>=0)d.append(" · durata media ").append(item.runtimeMinutes).append(" min");
                 item.description=d.toString();
@@ -662,7 +701,7 @@ public final class TvSync {
             File imageFile=new File(posterDir,imageName);
             // Changed URI when a poster is regenerated so launcher image caches refresh.
             Uri poster=new Uri.Builder().scheme("content")
-                .authority("com.fuoconero.tvbridge.test027.images")
+                .authority("com.fuoconero.tvbridge.test028.images")
                 .appendPath("posters").appendPath(imageName)
                 .appendQueryParameter("v",String.valueOf(imageFile.lastModified())).build();
             values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_URI,poster.toString());
@@ -672,6 +711,10 @@ public final class TvSync {
             intent.setData(new Uri.Builder().scheme("fuoconero-tv").authority("item")
                 .appendPath(item.id).build());
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            intent.putExtra("title",item.title);
+            intent.putExtra("episode",item.episode);
+            intent.putExtra("season",!item.nextSeason.isEmpty()?item.nextSeason:item.season);
+            intent.putExtra("episode_number",!item.nextEpisodeNumber.isEmpty()?item.nextEpisodeNumber:item.episodeNumber);
             values.put(TvContract.PreviewPrograms.COLUMN_INTENT_URI,intent.toUri(Intent.URI_INTENT_SCHEME));
             Long old=existing.get(key);
             if(old!=null){
