@@ -21,7 +21,7 @@ public final class TvSync {
     public interface Progress { void say(String text); }
     private static final java.util.concurrent.atomic.AtomicBoolean SYNC_BUSY=new java.util.concurrent.atomic.AtomicBoolean(false);
     private static final String PREFS="tvbridge";
-    private static final String CHANNEL_NAME="Fuoconero · Veezie/Trakt 0.4.0 TEST";
+    private static final String CHANNEL_NAME="Fuoconero · Veezie/Trakt 0.4.1 TEST";
     private static class Item {
         String id,title,description,image,imdb;
         boolean episode;
@@ -942,7 +942,7 @@ public final class TvSync {
         v.put(TvContract.Channels.COLUMN_TYPE,TvContract.Channels.TYPE_PREVIEW);
         v.put(TvContract.Channels.COLUMN_DISPLAY_NAME,CHANNEL_NAME);
         v.put(TvContract.Channels.COLUMN_APP_LINK_INTENT_URI,app.toUri(Intent.URI_INTENT_SCHEME));
-        v.put(TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID,"fuoconero-veezie-040");
+        v.put(TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID,"fuoconero-veezie-041");
         Uri result=c.getContentResolver().insert(TvContract.Channels.CONTENT_URI,v);
         if(result==null)throw new Exception("Android TV non ha creato il canale.");
         long id=ContentUris.parseId(result);
@@ -1037,7 +1037,7 @@ public final class TvSync {
                 poster=Uri.parse(item.importedPosterUri);
             }else{
                 poster=new Uri.Builder().scheme("content")
-                    .authority("com.fuoconero.tvbridge.test040.images")
+                    .authority("com.fuoconero.tvbridge.test041.images")
                     .appendPath("posters").appendPath(imageName)
                     .appendQueryParameter("v",String.valueOf(imageFile.lastModified())).build();
             }
