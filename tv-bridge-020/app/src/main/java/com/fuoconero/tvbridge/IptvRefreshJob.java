@@ -10,6 +10,9 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.util.Log;
 import java.io.InputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import android.os.Environment;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -34,9 +37,11 @@ public class IptvRefreshJob extends JobService {
         SharedPreferences prefs=ctx.getSharedPreferences(IptvStore.PREFS,Context.MODE_PRIVATE);
         String remote=prefs.getString("source_url","").trim();
         String savedUri=prefs.getString("source_uri","").trim();
-        if(remote.isEmpty() && savedUri.isEmpty())
-            throw new IOException("Importa un file M3U o inserisci l'URL della lista.");
+        String savedPath=prefs.getString("source_path","").trim();
+        if(remote.isEmpty() && savedUri.isEmpty() && savedPath.isEmpty())
+            throw new IOException("Importa un file M3U da Download o inserisci l'URL della lista.");
         try(InputStream in=!remote.isEmpty()?openRemote(remote):
+            !savedPath.isEmpty()?openLocalFile(ctx,savedPath):
             ctx.getContentResolver().openInputStream(Uri.parse(savedUri))){
             if(in==null)throw new IOException("La fonte M3U non e' accessibile.");
             String result=new IptvStore(ctx).importPlaylist(ctx,in,progress);
@@ -44,6 +49,23 @@ public class IptvRefreshJob extends JobService {
             schedule(ctx);
             return result+"\n"+projectivy;
         }
+    }
+    private static InputStream openLocalFile(Context ctx,String path)throws Exception{
+        File file=new File(path).getCanonicalFile();
+        File publicDownloads=Environment.getExternalStoragePublicDirectory(
+            Environment.DIRECTORY_DOWNLOADS).getCanonicalFile();
+        File appDir=ctx.getFilesDir().getCanonicalFile();
+        File appExternal=ctx.getExternalFilesDir(null);
+        boolean allowed=isDirectChild(file,publicDownloads)||
+            isDirectChild(file,appDir)||
+            (appExternal!=null && isDirectChild(file,appExternal.getCanonicalFile()));
+        if(!allowed)throw new IOException("Percorso M3U non consentito");
+        if(!file.isFile()||!file.canRead())
+            throw new IOException("M3U non accessibile: "+file.getName());
+        return new FileInputStream(file);
+    }
+    private static boolean isDirectChild(File file,File directory){
+        return directory.equals(file.getParentFile());
     }
     private static InputStream openRemote(String url)throws Exception{
         if(!url.startsWith("https://")&&!url.startsWith("http://"))
@@ -82,7 +104,8 @@ public class IptvRefreshJob extends JobService {
     public static void schedule(Context ctx){
         SharedPreferences p=ctx.getSharedPreferences(IptvStore.PREFS,Context.MODE_PRIVATE);
         boolean online=!p.getString("source_url","").isEmpty();
-        boolean local=!p.getString("source_uri","").isEmpty();
+        boolean local=!p.getString("source_uri","").isEmpty()||
+            !p.getString("source_path","").isEmpty();
         if(!online&&!local)return;
         JobScheduler scheduler=(JobScheduler)ctx.getSystemService(Context.JOB_SCHEDULER_SERVICE);
         if(scheduler==null)return;
