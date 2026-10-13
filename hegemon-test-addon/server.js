@@ -3,9 +3,10 @@ const http = require('node:http');
 const id = 'tt1254207';
 const movie = {id, type:'movie', name:'Big Buck Bunny (test MP4 di 10 secondi)', description:'Clip diagnostica MP4/H.264, senza torrent.', releaseInfo:'2008'};
 const manifest = {
-  id:'com.fuoconero.hegemon.mp4test', version:'1.0.0', name:'Fuoconero - Test MP4',
+  id:'com.fuoconero.hegemon.mp4test', version:'1.0.1', name:'Fuoconero - Test MP4',
+  logo:'https://www.stremio.com/website/stremio-logo-small.png',
   description:'Un solo MP4 pubblico di 10 secondi per testare il lettore Hegemon.',
-  resources:['catalog','meta','stream'], types:['movie'], idPrefixes:['tt1254207'],
+  resources:['catalog','stream'], types:['movie'], idPrefixes:['tt'],
   catalogs:[{type:'movie',id:'fuoconero_test',name:'Fuoconero Test MP4'}]
 };
 function send(res,code,data){
@@ -14,7 +15,7 @@ function send(res,code,data){
 }
 const server = http.createServer((req,res)=>{
   const p = new URL(req.url || '/', 'http://localhost').pathname;
-  console.log('[HTTP]',req.method,p);
+  console.log('[HTTP]',req.method,p,'origin='+String(req.headers.origin||''),'ua='+String(req.headers['user-agent']||'').slice(0,120));
   if(req.method==='OPTIONS') {res.writeHead(204,{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'GET,OPTIONS'}); return res.end();}
   if(req.method!=='GET' && req.method!=='HEAD')return send(res,405,{error:'GET or HEAD only'});
   if(p==='/' || p==='/health')return send(res,200,{status:'ok',addon:manifest.name});
