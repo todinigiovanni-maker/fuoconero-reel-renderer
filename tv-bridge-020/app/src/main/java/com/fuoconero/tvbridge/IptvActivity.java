@@ -16,6 +16,9 @@ import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
+import android.content.Context;
+import android.view.WindowManager;
+import android.view.inputmethod.InputMethodManager;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -35,8 +38,8 @@ public class IptvActivity extends Activity {
     private static final int READ_M3U_PERMISSION=441;
     private static final long PIN_WINDOW=5L*60L*1000L;
     private LinearLayout root,contentArea;
-    private TextView status;
-    private EditText remoteUrl,searchInput;
+    private TextView status,playlistLabel,sourceLabel;
+    private EditText searchInput;
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private String currentCategory="";private int page=0;
     private SharedPreferences prefs;
@@ -52,43 +55,37 @@ public class IptvActivity extends Activity {
         setContentView(scroll);
 
         label(root,"FUOCONERO · IPTV",30,0xffff984c,true);
-        label(root,"M3U locale o URL privato · catalogo e preferiti",17,Color.WHITE,false);
-        label(root,"La lista rimane sulla TV. Le categorie per adulti richiedono un PIN e non compaiono nelle anteprime Projectivy.",14,0xffc3cbde,false);
+        label(root,"0.4.2 TEST · Configurazione ottimizzata per telecomando Sony",15,0xffc3cbde,false);
+        playlistLabel=new TextView(this);
+        playlistLabel.setTextColor(Color.WHITE);
+        playlistLabel.setTextSize(22);
+        playlistLabel.setTypeface(null,Typeface.BOLD);
+        playlistLabel.setPadding(0,12,0,5);
+        root.addView(playlistLabel);
+        sourceLabel=new TextView(this);
+        sourceLabel.setTextColor(0xffc3cbde);
+        sourceLabel.setTextSize(14);
+        sourceLabel.setPadding(0,4,0,10);
+        root.addView(sourceLabel);
+        updatePlaylistLabels();
+
         status=new TextView(this);
         status.setTextColor(0xffffddaa);
         status.setTextSize(16);
         status.setPadding(0,12,0,15);
         root.addView(status);
 
-        button(root,"1 · IMPORTA M3U DALLA CARTELLA DOWNLOAD",this::importFromDownloads);
-        label(root,"Legge direttamente i file .m3u e .m3u8 dalla TV senza chiedere un gestore file. Mantiene il nome originale.",14,0xffc3cbde,false);
-        label(root,"Playlist selezionata: "+prefs.getString("source_name","nessuna"),14,0xffffc391,false);
-        label(root,"Oppure configura una sola volta l'URL della playlist per aggiornarla in automatico:",14,Color.WHITE,false);
-        remoteUrl=new EditText(this);
-        remoteUrl.setText(prefs.getString("source_url",""));
-        remoteUrl.setHint("https://.../playlist.m3u (facoltativo)");
-        remoteUrl.setTextSize(15);
-        remoteUrl.setTextColor(Color.WHITE);
-        remoteUrl.setHintTextColor(0xff97a6bd);
-        remoteUrl.setSingleLine(true);
-        remoteUrl.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        root.addView(remoteUrl);
-        button(root,"2 · Salva URL e aggiorna lista",()->{
-            String url=remoteUrl.getText().toString().trim();
-            if(!(url.startsWith("https://")||url.startsWith("http://"))){
-                showStatus("Inserisci un URL M3U HTTP(S) completo. Non e' l'indirizzo di un singolo canale.");
-                return;
-            }
-            prefs.edit().putString("source_url",url).remove("source_uri").apply();
-            refresh();
-        });
-        button(root,"3 · Aggiorna ora",this::refresh);
-        button(root,"4 · Pubblica le anteprime in Projectivy",()->{
+        button(root,"1 · DAI UN NOME ALLA PLAYLIST",this::promptPlaylistName);
+        button(root,"2 · IMPOSTA LINK M3U",this::promptPlaylistUrl);
+        button(root,"3 · AGGIORNA LISTA ORA",this::refresh);
+        button(root,"4 · IMPORTA FILE M3U DA DOWNLOAD",this::importFromDownloads);
+        button(root,"5 · MOSTRA LE CATEGORIE IN PROJECTIVY",()->{
             worker.execute(()->{
                 try{showStatus(IptvPublisher.publish(this));}
                 catch(Exception e){showStatus("Projectivy: "+e.getMessage());}
             });
         });
+        label(root,"Il nome scelto e' solo un'etichetta: il file M3U conserva sempre il nome originale.",14,0xffc3cbde,false);
         label(root,"LE TUE CATEGORIE",20,Color.WHITE,true);
         for(String c:new String[]{"Preferiti","Novita","TV Italia","Sport","Documentari","Film","Serie","Altri canali","Tutti"}){
             button(root,"▶ "+("Novita".equals(c)?"Novità della playlist":c),()->showCategory(c,0,""));
@@ -119,7 +116,102 @@ public class IptvActivity extends Activity {
         prefs.edit().putString("source_uri",selected.toString())
             .putString("source_name",selected.getLastPathSegment())
             .remove("source_path").remove("source_url").apply();
+        updatePlaylistLabels();
         refresh();
+    }
+
+    /** Display name is separate from the original M3U filename or URL. */
+    private String displayName(){
+        String custom=prefs.getString("display_name","").trim();
+        if(!custom.isEmpty())return custom;
+        String source=prefs.getString("source_name","");
+        if(source.isEmpty())return "La mia playlist IPTV";
+        return source.replaceFirst("(?i)\\.m3u8?$","").trim();
+    }
+    private void updatePlaylistLabels(){
+        if(playlistLabel!=null)playlistLabel.setText("Playlist: "+displayName());
+        if(sourceLabel!=null){
+            String filename=prefs.getString("source_name","");
+            String url=prefs.getString("source_url","");
+            String source;
+            if(!url.isEmpty())source="Sorgente: URL M3U salvato (indirizzo nascosto)";
+            else if(!filename.isEmpty())source="File originale: "+filename;
+            else source="Sorgente non configurata";
+            sourceLabel.setText(source);
+        }
+    }
+    /** A button opens the editor; the URL field is no longer in the DPAD scroll flow. */
+    private void promptPlaylistName(){
+        EditText field=dialogEdit(prefs.getString("display_name",displayName()),false);
+        newTvDialog("Nome da mostrare in Fuoconero IPTV",field,()->{
+            String name=field.getText().toString().trim();
+            if(name.isEmpty()||name.length()>42||name.contains("\\n")){
+                showStatus("Scegli un nome da 1 a 42 caratteri.");return;
+            }
+            prefs.edit().putString("display_name",name).apply();
+            updatePlaylistLabels();
+            showStatus("Playlist rinominata: "+name+
+                ". Il file originale e il catalogo non vengono modificati.");
+            worker.execute(()->{
+                try{
+                    if(new IptvStore(this).count()>0)IptvPublisher.publish(this);
+                }catch(Exception e){
+                    showStatus("Nome salvato, ma aggiornamento Projectivy non riuscito: "+
+                        e.getMessage());
+                }
+            });
+        });
+    }
+    private void promptPlaylistUrl(){
+        EditText field=dialogEdit(prefs.getString("source_url",""),true);
+        newTvDialog("Indirizzo della playlist M3U",field,()->{
+            String url=field.getText().toString().trim();
+            if(!(url.startsWith("https://")||url.startsWith("http://"))||
+                url.contains(" ")||url.length()>2500){
+                showStatus("Inserisci l'indirizzo completo HTTP(S) della playlist, "+
+                    "non il link di un singolo film.");return;
+            }
+            prefs.edit().putString("source_url",url)
+                .remove("source_path").remove("source_uri").apply();
+            IptvRefreshJob.schedule(this);
+            updatePlaylistLabels();
+            showStatus("Link M3U salvato. Il catalogo attuale resta disponibile. "+
+                "Premi 3 per aggiornare ora oppure attendi l'aggiornamento programmato.");
+        });
+    }
+    private EditText dialogEdit(String initial,boolean uri){
+        EditText field=new EditText(this);
+        field.setSingleLine(true);
+        field.setTextSize(18);
+        field.setTextColor(Color.WHITE);
+        field.setSelectAllOnFocus(true);
+        field.setPadding(24,14,24,14);
+        field.setInputType(uri?
+            (InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI):
+            (InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_SENTENCES));
+        field.setText(initial);
+        field.setFocusable(true);
+        field.setFocusableInTouchMode(true);
+        return field;
+    }
+    private void newTvDialog(String title,EditText field,Runnable save){
+        // Native dialog buttons get DPAD focus and Enter works on Android TV.
+        AlertDialog dlg=new AlertDialog.Builder(this)
+            .setTitle(title)
+            .setView(field)
+            .setPositiveButton("Salva",(d,which)->save.run())
+            .setNegativeButton("Annulla",null).create();
+        dlg.getWindow(); // window is available after show
+        dlg.setOnShowListener(d->{
+            field.requestFocus();
+            field.selectAll();
+            if(dlg.getWindow()!=null)dlg.getWindow()
+                .setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
+            InputMethodManager keyboard=(InputMethodManager)
+                getSystemService(Context.INPUT_METHOD_SERVICE);
+            if(keyboard!=null)keyboard.showSoftInput(field,InputMethodManager.SHOW_IMPLICIT);
+        });
+        dlg.show();
     }
 
     private void importFromDownloads(){
@@ -193,6 +285,7 @@ public class IptvActivity extends Activity {
         prefs.edit().putString("source_path",selected.getAbsolutePath())
             .putString("source_name",selected.getName())
             .remove("source_uri").remove("source_url").apply();
+        updatePlaylistLabels();
         showStatus("Avvio l'importazione di "+selected.getName()+
             " ("+Math.max(1,selected.length()/(1024*1024))+" MB).");
         refresh();
