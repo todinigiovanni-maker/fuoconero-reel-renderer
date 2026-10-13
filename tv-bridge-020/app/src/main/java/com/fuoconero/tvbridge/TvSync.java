@@ -300,7 +300,7 @@ public final class TvSync {
     }
     public static String diagnose(Context ctx)throws Exception {
         long id=ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getLong("channel_id",-1);
-        if(id<0)return "Nessuna riga Fuoconero ancora creata: avvia prima la sincronizzazione.";
+        if(id<0)return "Nessuna riga Veezie ancora creata. Premi 1 per importare le locandine senza Trakt.";
         int cards=0,browsable=0,withProgress=0,withPoster=0;
         Set<String> intents=new HashSet<>(),ids=new HashSet<>();
         try(Cursor cur=ctx.getContentResolver().query(TvContract.PreviewPrograms.CONTENT_URI,
@@ -327,7 +327,11 @@ public final class TvSync {
         SharedPreferences stats=ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
         long lastSync=stats.getLong("last_sync_success",0L);
         long queued=stats.getLong("refresh_earliest_at",0L);
-        return "Schede Android TV: "+cards+
+        return "Fonte: Veezie (navigazione) / dati importati dalle vecchie righe"+
+            "\nFonte locandine: "+stats.getString("import_channel","non ancora importate")+
+            "\nLocandine importate: "+stats.getInt("import_count",0)+
+            " (copiate: "+stats.getInt("import_posters_copied",0)+")"+
+            "\nSchede Android TV: "+cards+
             "\nCollegamenti distinti: "+intents.size()+
             "\nContent ID distinti: "+ids.size()+
             "\nPoster con URI: "+withPoster+
@@ -350,7 +354,8 @@ public final class TvSync {
             "\nPoster con info prossima puntata: "+stats.getInt("last_next_posters",0)+
             "\nBarre avanzamento SERIE: "+stats.getInt("last_series_bars",0)+
             "\nSerie senza % affidabile: "+stats.getInt("last_series_missing_progress",0)+
-            "\nLa barra sul poster appare solo se l'API Trakt comunica un progresso parziale.";
+            "\nLa barra SERIE importata/Trakt non misura i minuti della puntata."+
+            "\nIl player Veezie va verificato con la diagnostica dei tempi.";
     }
     public static int countCards(Context c) throws Exception {
         long id=c.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getLong("channel_id",-1);
