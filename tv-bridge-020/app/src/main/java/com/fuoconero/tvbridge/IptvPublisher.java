@@ -26,6 +26,11 @@ public final class IptvPublisher {
     public static String publish(Context ctx)throws Exception{
         IptvStore store=new IptvStore(ctx);
         SharedPreferences prefs=ctx.getSharedPreferences("iptv_channels",Context.MODE_PRIVATE);
+        String custom=ctx.getSharedPreferences(IptvStore.PREFS,Context.MODE_PRIVATE)
+            .getString("display_name","").trim();
+        if(custom.isEmpty())custom="IPTV";
+        if(custom.length()>42)custom=custom.substring(0,42);
+        String userPlaylist=custom;
         int all=0,groups=0;
         for(String category:IptvStore.PUBLIC_GROUPS){
             ArrayList<IptvStore.Media> items=store.list(category,"",0,12);
@@ -38,10 +43,18 @@ public final class IptvPublisher {
                     if(old==null||!old.moveToFirst())id=-1L;
                 }catch(Exception ignored){id=-1L;}
             }
+            // Rename existing Projectivy rows without losing program IDs.
+            if(id>0){
+                ContentValues rename=new ContentValues();
+                rename.put(TvContract.Channels.COLUMN_DISPLAY_NAME,
+                    "Fuoconero · "+userPlaylist+" · "+category);
+                ctx.getContentResolver().update(TvContract.buildChannelUri(id),
+                    rename,null,null);
+            }
             if(id<0){
                 ContentValues row=new ContentValues();
                 row.put(TvContract.Channels.COLUMN_TYPE,TvContract.Channels.TYPE_PREVIEW);
-                row.put(TvContract.Channels.COLUMN_DISPLAY_NAME,"Fuoconero · IPTV "+category);
+                row.put(TvContract.Channels.COLUMN_DISPLAY_NAME,"Fuoconero · "+userPlaylist+" · "+category);
                 row.put(TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID,"fuoconero-iptv-041-"+category);
                 Intent home=new Intent(ctx,IptvActivity.class);
                 home.putExtra("category",category);
