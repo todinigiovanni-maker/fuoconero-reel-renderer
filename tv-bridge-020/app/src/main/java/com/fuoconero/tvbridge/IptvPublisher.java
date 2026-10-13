@@ -33,7 +33,31 @@ public final class IptvPublisher {
         String userPlaylist=custom;
         int all=0,groups=0;
         for(String category:IptvStore.PUBLIC_GROUPS){
-            ArrayList<IptvStore.Media> items=store.list(category,"",0,12);
+            boolean showCategory="Serie".equals(category)||"Ultime serie".equals(category);
+            ArrayList<IptvStore.Media> items;
+            ArrayList<IptvLibrary.Show> showItems=new ArrayList<>();
+            if(showCategory || "Ultimi film".equals(category)||"Continua".equals(category)){
+                try(IptvLibrary library=new IptvLibrary(ctx)){
+                    if(showCategory){
+                        showItems=library.shows("",0,12,"Ultime serie".equals(category));
+                        items=new ArrayList<>();
+                        for(IptvLibrary.Show show:showItems){
+                            IptvStore.Media media=new IptvStore.Media();
+                            media.id=show.newestId;media.title=show.title;
+                            media.group=show.count+" episodi";
+                            media.category="Serie";media.kind="Serie";
+                            media.adult=false;
+                            items.add(media);
+                        }
+                    }else if("Ultimi film".equals(category)){
+                        items=library.newestFilms(0,12);
+                    }else{
+                        items=new ArrayList<>();
+                        for(IptvLibrary.Recent recent:library.recentlyOpened(12))
+                            items.add(recent.media);
+                    }
+                }
+            }else items=store.list(category,"",0,12);
             if(items.isEmpty())continue;
             String key="channel_"+category.replace(' ','_');
             long id=prefs.getLong(key,-1L);
@@ -88,7 +112,10 @@ public final class IptvPublisher {
             int order=0;
             for(IptvStore.Media media:items){
                 if(media.adult)continue;
-                String internal="fuoconero:iptv:"+media.id;
+                IptvLibrary.Show show=showCategory?showItems.get(order):null;
+                String internal=showCategory?
+                    "fuoconero:iptv:show:"+media.id:
+                    "fuoconero:iptv:"+media.id;
                 retained.add(internal);
                 File poster=posterFile(ctx,media.id);
                 if(!poster.isFile()){
@@ -100,21 +127,31 @@ public final class IptvPublisher {
                 Uri photo=new Uri.Builder().scheme("content").authority(AUTHORITY)
                     .appendPath("posters").appendPath(poster.getName())
                     .appendQueryParameter("v",String.valueOf(poster.lastModified())).build();
-                Intent open=new Intent(ctx,IptvPlayActivity.class);
+                Intent open=showCategory?
+                    new Intent(ctx,IptvActivity.class):
+                    new Intent(ctx,IptvPlayActivity.class);
                 open.setAction(Intent.ACTION_VIEW);
-                open.setData(Uri.parse("fuoconero-iptv://play/"+media.id));
+                open.setData(showCategory?
+                    new Uri.Builder().scheme("fuoconero-iptv").authority("series")
+                        .appendPath(show.key).build():
+                    Uri.parse("fuoconero-iptv://play/"+media.id));
                 open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                open.putExtra("id",media.id);
+                if(showCategory){
+                    open.putExtra("series_key",show.key);
+                    open.putExtra("series_title",show.title);
+                }else open.putExtra("id",media.id);
                 ContentValues values=new ContentValues();
                 values.put(TvContract.PreviewPrograms.COLUMN_CHANNEL_ID,id);
                 values.put(TvContract.PreviewPrograms.COLUMN_TYPE,
+                    showCategory?TvContract.PreviewPrograms.TYPE_TV_SERIES:
                     "TV".equals(media.kind)?TvContract.PreviewPrograms.TYPE_CHANNEL:
                     TvContract.PreviewPrograms.TYPE_MOVIE);
                 values.put(TvContract.PreviewPrograms.COLUMN_TITLE,media.title);
                 values.put(TvContract.PreviewPrograms.COLUMN_SHORT_DESCRIPTION,
-                    media.group+" · Seleziona un lettore compatibile");
+                    showCategory?show.count+" episodi · Apri per scegliere la puntata":
+                    media.group+" · Apri in Fuoconero IPTV");
                 values.put(TvContract.PreviewPrograms.COLUMN_INTERNAL_PROVIDER_ID,internal);
-                values.put(TvContract.PreviewPrograms.COLUMN_CONTENT_ID,"iptv:"+media.id);
+                values.put(TvContract.PreviewPrograms.COLUMN_CONTENT_ID,showCategory?"iptv:series:"+show.key:"iptv:"+media.id);
                 values.put(TvContract.PreviewPrograms.COLUMN_WEIGHT,1000-(order++));
                 values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_URI,photo.toString());
                 values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_ASPECT_RATIO,
