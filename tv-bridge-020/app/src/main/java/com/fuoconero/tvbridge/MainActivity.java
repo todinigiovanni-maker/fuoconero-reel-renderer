@@ -1,218 +1,234 @@
 package com.fuoconero.tvbridge;
 
 import android.app.Activity;
-import android.os.Bundle;
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.os.Bundle;
 import android.view.View;
-import android.widget.*;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
 import android.text.InputType;
-import android.content.SharedPreferences;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
+/**
+ * Veezie first: Veezie opens media, Trakt enriches and automatically refreshes
+ * the catalogue whenever its one-time authorization is available.
+ * No repeated device code flow and no PC import.
+ */
 public class MainActivity extends Activity {
-    private LinearLayout root,traktPanel;
+    private LinearLayout root;
     private TextView status;
     private EditText clientId,clientSecret;
     private final ExecutorService pool=Executors.newSingleThreadExecutor();
     private final ExecutorService authPool=Executors.newSingleThreadExecutor();
-    private Future<?> pendingTrakt;
+    private Future<?> authRequest;
+    private static final long STARTUP_SYNC_MIN_AGE_MS=4L*60L*1000L;
 
     @Override public void onCreate(Bundle b){
         super.onCreate(b);
-        SharedPreferences p=getSharedPreferences("trakt",MODE_PRIVATE);
+        SharedPreferences trakt=getSharedPreferences("trakt",MODE_PRIVATE);
         root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(42,28,42,28);
+        root.setPadding(40,26,40,26);
         root.setBackgroundColor(Color.rgb(17,20,32));
-        ScrollView sv=new ScrollView(this);
-        sv.setFillViewport(true);
-        sv.addView(root);
-        setContentView(sv);
+        ScrollView scroll=new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.addView(root);
+        setContentView(scroll);
 
-        label(root,"FUOCONERO · VEEZIE EDITION",29,Color.rgb(255,128,58),true);
-        label(root,"0.3.5 TEST · Importazione offline delle 30 locandine e titoli, senza codice Trakt.",17,Color.WHITE,false);
-        label(root,"Veezie in Projectivy. Importa il catalogo ZIP dal PC via ADB: nessun accesso al database TV.",15,0xffcdd1dd,false);
+        label("FUOCONERO · TV BRIDGE",29,0xffff8c48,true);
+        label("0.3.6 TEST · Veezie per la riproduzione, Trakt come catalogo automatico.",17,Color.WHITE,false);
+        label("Le locandine si aggiornano da sole quando Trakt e' collegato. Nessun file ZIP e nessun trasferimento dal PC.",15,0xffcbd1df,false);
+        label("Client ID Trakt (si inserisce una sola volta):",15,Color.WHITE,false);
+        clientId=input("Client ID Trakt",trakt.getString("client_id",""),false);
+        label("Client Secret (opzionale):",14,0xffcbd1df,false);
+        clientSecret=input("Opzionale",trakt.getString("client_secret",""),true);
 
-        button(root,"1 · Crea e rendi visibile la riga Veezie",()->{
-            status("Creo la riga Veezie indipendente...");
-            pool.execute(()->{
+        button("1 · Collega Trakt una sola volta",()->{
+            saveTraktSettings();
+            if(clientId.getText().toString().trim().isEmpty()){
+                status("Prima inserisci il Client ID di Trakt; poi premi Collega.");
+                return;
+            }
+            if(authRequest!=null && !authRequest.isDone()){
+                status("Autorizzazione ancora in corso. Puoi annullarla con il pulsante 2.");
+                return;
+            }
+            status("Contatto Trakt per il codice di attivazione. Se la rete non risponde comparira' un errore, non un blocco.");
+            authRequest=authPool.submit(()->{
                 try{
-                    TvSync.ensureStarter(this);
-                    runOnUiThread(()->{
-                        TvSync.requestVisibility(this);
-                        status("Canale Veezie creato. Se non compare, apri Projectivy > Gestisci canali e abilita Fuoconero · Veezie 0.3.5 TEST.");
-                    });
-                }catch(Exception e){status("Creazione canale: "+e.getMessage());}
+                    TraktApi api=new TraktApi(this);
+                    TraktApi.DeviceCode device=api.startDevice();
+                    if(Thread.currentThread().isInterrupted())return;
+                    status("Apri "+device.url+" sul telefono e inserisci: "+device.userCode+
+                        "\nAspetto l'autorizzazione; e' richiesta solo la prima volta.");
+                    api.waitForApproval(device,this::status);
+                    if(Thread.currentThread().isInterrupted())return;
+                    status("Trakt collegato! Recupero automaticamente locandine e serie...");
+                    syncNow();
+                }catch(InterruptedException e){
+                    Thread.currentThread().interrupt();
+                }catch(Exception e){
+                    if(!Thread.currentThread().isInterrupted())
+                        status("Trakt non raggiungibile: "+e.getMessage()+
+                            "\nPuoi sempre aprire Veezie. Premi 1 per riprovare, senza resettare l'app.");
+                }
             });
         });
-        button(root,"2 · Ricevi catalogo ZIP dal PC via ADB (porta 8787)",()->{
-            status("In attesa per 3 minuti del catalogo ZIP da ADB sulla porta 8787. Non chiudere l'app.");
-            pool.execute(()->{
-                String answer=CatalogReceiver.receiveOnce(this);
-                status(answer);
-                if(answer.startsWith("IMPORTAZIONE RIUSCITA:"))
-                    runOnUiThread(()->TvSync.requestVisibility(this));
-            });
+        button("2 · Annulla richiesta Trakt",()->{
+            if(authRequest!=null)authRequest.cancel(true);
+            status("Richiesta Trakt interrotta. Veezie resta utilizzabile.");
         });
-        button(root,"3 · Prova a importare le vecchie schede",()->{
-            status("Leggo le righe Fuoconero gia' presenti in Android TV...");
-            pool.execute(()->{
-                try{status(TvSync.importExisting(this));}
-                catch(Exception e){status("Importazione: "+e.getMessage());}
-            });
+        button("3 · Aggiorna locandine ora",()->{
+            if(!hasTrakt()){
+                status("Per popolare automaticamente le locandine collega Trakt una sola volta con il pulsante 1.");
+                return;
+            }
+            status("Aggiorno catalogo da Trakt...");
+            syncNow();
         });
-        button(root,"2 · Apri Veezie",()->{
+        button("4 · Apri Veezie",()->{
             if(!OpenContentActivity.openVeezie(this))
-                status("Veezie non risulta installato.");
+                status("Veezie non e' installato o non puo essere aperto.");
         });
-        button(root,"3 · Diagnostica schede Android TV",()->{
+        button("5 · Diagnostica canale Android TV",()->{
             pool.execute(()->{
                 try{status(TvSync.diagnose(this));}
                 catch(Exception e){status("Diagnostica: "+e.getMessage());}
             });
         });
-        button(root,"4 · Diagnostica navigazione e tempi Veezie",()->
+        button("6 · Diagnostica Veezie e tempo di riproduzione",()->
             status(OpenContentActivity.diagnoseVeezie(this)));
-        button(root,"5 · Abilita navigazione Veezie (Accessibilita)",()->{
+        button("7 · Abilita navigazione Veezie (Accessibilita)",()->{
             try{
                 startActivity(new android.content.Intent(
                     android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));
-                status("Abilita SOLO il servizio Fuoconero TV Bridge 0.3.5 TEST. Se una vecchia versione e' ancora abilitata, disabilitala per evitare interferenze.");
+                status("Abilita soltanto Fuoconero TV Bridge 0.3.6 TEST; disabilita i servizi delle vecchie versioni per evitare doppie azioni.");
             }catch(Exception e){status("Apri Impostazioni TV > Accessibilita. "+e.getMessage());}
         });
-        button(root,"6 · Test tempi lettore Veezie (2 min)",()->{
+        button("8 · Test lettura tempi Veezie (2 minuti)",()->{
             if(!VeezieNavService.isEnabled(this)){
-                status("Abilita prima il servizio Accessibilita con il pulsante 5.");
+                status("Abilita prima il servizio di Accessibilita con il pulsante 7.");
                 return;
             }
             VeezieNavService.startPlaybackProbe(this);
-            status("Test di due minuti avviato: apri una puntata Veezie, mostra i controlli video e torna a leggere la diagnostica 4.");
+            status("Apri Veezie, riproduci una puntata e mostra i controlli. Poi torna e premi 6 per leggere i tempi.");
         });
-        button(root,"7 · Annulla navigazione automatica",()->{
-            VeezieNavService.cancel(this);
-            status("Navigazione automatica annullata.");
-        });
-
-        button(root,"8 · Trakt FACOLTATIVO: mostra/nascondi opzioni",()->{
-            traktPanel.setVisibility(traktPanel.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE);
-        });
-        traktPanel=new LinearLayout(this);
-        traktPanel.setOrientation(LinearLayout.VERTICAL);
-        traktPanel.setVisibility(View.GONE);
-        root.addView(traktPanel);
-        label(traktPanel,"Solo per aggiornare cronologia e dati delle serie. Per Veezie non serve Trakt.",16,Color.WHITE,false);
-        clientId=input(traktPanel,"Client ID Trakt (opzionale)",
-            p.getString("client_id",""),false);
-        clientSecret=input(traktPanel,"Client Secret (opzionale)",
-            p.getString("client_secret",""),true);
-        button(traktPanel,"Collega Trakt (opzionale)",()->{
-            saveId();
-            if(clientId.getText().toString().trim().isEmpty()){
-                status("Inserisci un Client ID solo se desideri usare Trakt.");
-                return;
-            }
-            if(pendingTrakt!=null && !pendingTrakt.isDone()){
-                status("Richiesta Trakt gia' in corso. Premi Annulla o attendi.");
-                return;
-            }
-            status("Richiedo il codice Trakt (facoltativo)... Puoi annullare in qualunque momento.");
-            pendingTrakt=authPool.submit(()->{
-                try{
-                    TraktApi a=new TraktApi(this);
-                    TraktApi.DeviceCode code=a.startDevice();
-                    status("Per Trakt apri "+code.url+" e inserisci "+code.userCode+
-                        "\nPuoi annullare senza perdere le schede Veezie.");
-                    a.waitForApproval(code,this::status);
-                    if(Thread.currentThread().isInterrupted())return;
-                    status("Trakt autorizzato. Premi Aggiorna da Trakt, solo se vuoi.");
-                    SyncJob.schedule(this);
-                }catch(InterruptedException ignored){
-                    Thread.currentThread().interrupt();
-                }catch(Exception e){status("Trakt non collegato: "+e.getMessage()+
-                    "\nVeezie e le schede importate restano disponibili.");}
-            });
-        });
-        button(traktPanel,"Annulla richiesta codice Trakt",()->{
-            if(pendingTrakt!=null)pendingTrakt.cancel(true);
-            status("Richiesta Trakt annullata. Continua con Veezie, senza codice.");
-        });
-        button(traktPanel,"Aggiorna informazioni da Trakt (opzionale)",()->{
-            saveId();
-            if(p.getString("access_token","").isEmpty()){
-                status("Trakt non autorizzato. Le schede Veezie rimangono utilizzabili.");
-                return;
-            }
-            status("Aggiorno da Trakt...");
-            pool.execute(()->{
-                try{TvSync.perform(this,this::status);}
-                catch(Exception e){status("Trakt non disponibile: "+e.getMessage()+
-                    "\nConservo le locandine presenti.");}
-            });
-        });
-        button(traktPanel,"Scollega Trakt solo da questa app",()->{
-            if(pendingTrakt!=null)pendingTrakt.cancel(true);
-            p.edit().remove("access_token").remove("refresh_token")
-                .remove("expires_at").apply();
-            status("Trakt scollegato. Le schede importate rimangono.");
-        });
-
-        status=new TextView(this);
-        status.setTextSize(17);
-        status.setTextColor(0xffeeecf5);
-        status.setPadding(0,22,0,12);
-        root.addView(status);
-        status("Modalita' Veezie attiva. Premi 2 per ricevere il catalogo offline via ADB. Trakt e' facoltativo.");
-        // Nessuna sincronizzazione Trakt automatica in modalita Veezie.
-        if(getSharedPreferences("tvbridge",MODE_PRIVATE).getLong("channel_id",-1L)<0L){
+        button("9 · Rendi visibile il canale in Projectivy",()->{
             pool.execute(()->{
                 try{
                     TvSync.ensureStarter(this);
                     runOnUiThread(()->{
                         TvSync.requestVisibility(this);
-                        status("Canale Veezie creato. Se non compare in Projectivy, abilitalo in Gestisci canali. Nessun Trakt richiesto.");
+                        status("Richiesta di visibilita' inviata. Se necessario abilita la riga Fuoconero · Veezie/Trakt 0.3.6 TEST in Projectivy.");
                     });
-                }catch(Exception e){status("Avvio: "+e.getMessage()+" - premi 1 per riprovare.");}
+                }catch(Exception e){status("Canale: "+e.getMessage());}
             });
-        }
+        });
+        button("10 · Scollega Trakt (mantieni le locandine)",()->{
+            if(authRequest!=null)authRequest.cancel(true);
+            trakt.edit().remove("access_token").remove("refresh_token")
+                .remove("expires_at").apply();
+            status("Trakt scollegato in questa app. Le locandine gia' scaricate restano visibili.");
+        });
+
+        status=new TextView(this);
+        status.setTextColor(0xfff1f0f8);
+        status.setTextSize(17);
+        status.setPadding(0,24,0,12);
+        root.addView(status);
+        status(hasTrakt()?
+            "Trakt gia' collegato: controllo automaticamente il catalogo...":
+            "Veezie pronto. Per le locandine automatiche premi 1 e collega Trakt una sola volta.");
+
+        pool.execute(()->{
+            try{
+                TvSync.ensureStarter(this);
+                runOnUiThread(()->TvSync.requestVisibility(this));
+                if(hasTrakt()){
+                    SyncJob.schedule(this);
+                    long last=getSharedPreferences("tvbridge",MODE_PRIVATE)
+                        .getLong("last_sync_started",0);
+                    if(System.currentTimeMillis()-last>STARTUP_SYNC_MIN_AGE_MS){
+                        status("Trakt gia' autorizzato. Aggiorno automaticamente le locandine...");
+                        try{
+                            TvSync.perform(this,this::status);
+                        }catch(Exception e){
+                            status("Catalogo temporaneamente non aggiornato: "+e.getMessage()+
+                                "\nLe schede salvate rimangono.");
+                        }
+                    }else status("Catalogo gia' sincronizzato recentemente; aggiornamento automatico programmato.");
+                }
+            }catch(Exception e){status("Avvio canale Veezie: "+e.getMessage());}
+        });
     }
-    private void saveId(){
+
+    private boolean hasTrakt(){
+        SharedPreferences trakt=getSharedPreferences("trakt",MODE_PRIVATE);
+        return !trakt.getString("access_token","").isEmpty()
+            && !trakt.getString("client_id","").isEmpty();
+    }
+    private void syncNow(){
+        pool.execute(()->{
+            try{
+                TvSync.perform(this,this::status);
+                SyncJob.schedule(this);
+                runOnUiThread(()->TvSync.requestVisibility(this));
+            }catch(Exception e){
+                status("Sincronizzazione non riuscita: "+e.getMessage()+
+                    "\nLe locandine gia' scaricate non sono state cancellate.");
+            }
+        });
+    }
+    private void saveTraktSettings(){
         getSharedPreferences("trakt",MODE_PRIVATE).edit()
             .putString("client_id",clientId.getText().toString().trim())
-            .putString("client_secret",clientSecret.getText().toString().trim())
-            .apply();
+            .putString("client_secret",clientSecret.getText().toString().trim()).apply();
     }
-    private EditText input(LinearLayout target,String hint,String value,boolean secret){
-        EditText e=new EditText(this);
-        e.setSingleLine(true);e.setText(value);e.setHint(hint);
-        e.setTextColor(Color.WHITE);e.setHintTextColor(0xff9296ab);
-        if(secret)e.setInputType(InputType.TYPE_CLASS_TEXT|
-            InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        target.addView(e,new LinearLayout.LayoutParams(-1,-2));
-        return e;
+    private EditText input(String hint,String value,boolean secret){
+        EditText field=new EditText(this);
+        field.setSingleLine(true);
+        field.setHint(hint);
+        field.setText(value);
+        field.setTextColor(Color.WHITE);
+        field.setHintTextColor(0xffa9b1c4);
+        if(secret)field.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        root.addView(field,new LinearLayout.LayoutParams(-1,-2));
+        return field;
     }
-    private void label(LinearLayout target,String text,int size,int color,boolean bold){
-        TextView tv=new TextView(this);
-        tv.setText(text);tv.setTextColor(color);tv.setTextSize(size);
-        if(bold)tv.setTypeface(null,Typeface.BOLD);
-        tv.setPadding(0,8,0,8);
-        target.addView(tv);
+    private void label(String text,int size,int color,boolean bold){
+        TextView label=new TextView(this);
+        label.setText(text);
+        label.setTextSize(size);
+        label.setTextColor(color);
+        if(bold)label.setTypeface(null,Typeface.BOLD);
+        label.setPadding(0,7,0,7);
+        root.addView(label);
     }
-    private void button(LinearLayout target,String name,Runnable action){
-        Button b=new Button(this);
-        b.setText(name);b.setAllCaps(false);b.setTextSize(16);
-        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=8;
-        target.addView(b,p);
-        b.setOnClickListener(v->action.run());
+    private void button(String text,Runnable action){
+        Button button=new Button(this);
+        button.setText(text);
+        button.setAllCaps(false);
+        button.setTextSize(16);
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);
+        p.topMargin=8;
+        root.addView(button,p);
+        button.setOnClickListener(v->action.run());
     }
-    private void status(String value){
-        runOnUiThread(()->{if(status!=null)status.setText(value);});
+    private void status(String text){
+        runOnUiThread(()->{if(status!=null)status.setText(text);});
     }
     @Override protected void onDestroy(){
-        if(pendingTrakt!=null)pendingTrakt.cancel(true);
-        pool.shutdownNow();authPool.shutdownNow();
+        if(authRequest!=null)authRequest.cancel(true);
+        authPool.shutdownNow();
+        pool.shutdownNow();
         super.onDestroy();
     }
 }
