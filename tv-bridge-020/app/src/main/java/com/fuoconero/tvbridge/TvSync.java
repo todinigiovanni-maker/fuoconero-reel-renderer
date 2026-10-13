@@ -63,6 +63,40 @@ public final class TvSync {
             (complete?"":"\nSincronizzazione parziale: non ho eliminato le vecchie schede.")+
             "\nLe schede aprono la HOME di Veezie. Se qui risultano 30 e Projectivy ne mostra una, controlla la configurazione del launcher.");
     }
+    public static String diagnose(Context ctx)throws Exception {
+        long id=ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getLong("channel_id",-1);
+        if(id<0)return "Nessuna riga Fuoconero ancora creata: avvia prima la sincronizzazione.";
+        int cards=0,browsable=0,withProgress=0,withPoster=0;
+        Set<String> intents=new HashSet<>(),ids=new HashSet<>();
+        try(Cursor cur=ctx.getContentResolver().query(TvContract.PreviewPrograms.CONTENT_URI,
+            new String[]{TvContract.PreviewPrograms.COLUMN_CHANNEL_ID,
+                TvContract.PreviewPrograms.COLUMN_INTERNAL_PROVIDER_ID,
+                TvContract.PreviewPrograms.COLUMN_INTENT_URI,
+                TvContract.PreviewPrograms.COLUMN_CONTENT_ID,
+                TvContract.PreviewPrograms.COLUMN_POSTER_ART_URI,
+                TvContract.PreviewPrograms.COLUMN_BROWSABLE,
+                TvContract.PreviewPrograms.COLUMN_LAST_PLAYBACK_POSITION_MILLIS
+            },null,null,null)){
+            if(cur!=null)while(cur.moveToNext()){
+                if(cur.getLong(0)!=id)continue;
+                String internal=cur.getString(1);
+                if(internal==null||!internal.startsWith("fuoconero:"))continue;
+                cards++;
+                if(cur.getString(2)!=null)intents.add(cur.getString(2));
+                if(cur.getString(3)!=null)ids.add(cur.getString(3));
+                if(cur.getString(4)!=null)withPoster++;
+                if(!cur.isNull(5)&&cur.getInt(5)!=0)browsable++;
+                if(!cur.isNull(6)&&cur.getLong(6)>0)withProgress++;
+            }
+        }
+        return "Schede Android TV: "+cards+
+            "\nCollegamenti distinti: "+intents.size()+
+            "\nContent ID distinti: "+ids.size()+
+            "\nPoster con URI: "+withPoster+
+            "\nSchede browsable: "+browsable+
+            "\nBarra avanzamento disponibile: "+withProgress+
+            "\nIl conteggio misura Android TV, non le tessere renderizzate da Projectivy.";
+    }
     public static int countCards(Context c) throws Exception {
         long id=c.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getLong("channel_id",-1);
         if(id<0)return 0;
