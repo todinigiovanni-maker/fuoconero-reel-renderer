@@ -203,7 +203,7 @@ public final class TvSync {
             values.put(TvContract.PreviewPrograms.COLUMN_TYPE,item.episode?
                 TvContract.PreviewPrograms.TYPE_TV_EPISODE:TvContract.PreviewPrograms.TYPE_MOVIE);
             values.put(TvContract.PreviewPrograms.COLUMN_TITLE,item.title);
-            values.put(TvContract.PreviewPrograms.COLUMN_DESCRIPTION,item.description);
+            values.put(TvContract.PreviewPrograms.COLUMN_SHORT_DESCRIPTION,item.description);
             values.put(TvContract.PreviewPrograms.COLUMN_INTERNAL_PROVIDER_ID,key);
             values.put(TvContract.PreviewPrograms.COLUMN_WEIGHT,999-i);
             Uri poster=Uri.parse("content://com.fuoconero.tvbridge.images/posters/"+item.id+".png");
