@@ -21,7 +21,7 @@ import java.util.HashSet;
 
 /** Up to 12 previews per public category. Private/adult entries are never published. */
 public final class IptvPublisher {
-    private static final String AUTHORITY="com.fuoconero.iptv.clean051.images";
+    private static final String AUTHORITY="com.fuoconero.iptv.clean052.images";
     private IptvPublisher(){}
     public static String publish(Context ctx)throws Exception{
         IptvStore store=new IptvStore(ctx);
