@@ -1,8 +1,8 @@
-name: Fuoconero TV Bridge 0.3.3 SAFE TEST APK
+name: Fuoconero TV Bridge 0.3.4 SAFE TEST APK
 on:
   push:
     branches:
-      - fuoconero-tv-bridge-033-veezie-edition
+      - fuoconero-tv-bridge-034-channel-visibility
     paths:
       - 'tv-bridge-020/**'
       - '.github/workflows/fuoconero-tv-bridge-020.yml'
@@ -38,6 +38,6 @@ jobs:
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Fuoconero-TV-Bridge-0.3.3-safe-test
+          name: Fuoconero-TV-Bridge-0.3.4-safe-test
           path: tv-bridge-020/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
