@@ -21,7 +21,7 @@ public final class TvSync {
     public interface Progress { void say(String text); }
     private static final java.util.concurrent.atomic.AtomicBoolean SYNC_BUSY=new java.util.concurrent.atomic.AtomicBoolean(false);
     private static final String PREFS="tvbridge";
-    private static final String CHANNEL_NAME="Fuoconero · Veezie 0.3.4 TEST";
+    private static final String CHANNEL_NAME="Fuoconero · Veezie 0.3.5 TEST";
     private static class Item {
         String id,title,description,image,imdb;
         boolean episode;
@@ -83,6 +83,123 @@ public final class TvSync {
             catch(Exception e){android.util.Log.w("FuoconeroTV","Richiesta visibilita non supportata",e);}
         }
     }
+    /**
+     * Restore the 30 posters + media names from a local, user supplied ZIP.
+     * This does not contact Trakt or touch any channel owned by another APK.
+     */
+    public static String importCatalogZip(Context ctx,InputStream source)throws Exception{
+        File folder=new File(ctx.getFilesDir(),"posters");
+        if(!folder.isDirectory() && !folder.mkdirs())
+            throw new IOException("Cartella locandine non accessibile");
+        JSONObject manifest=null;
+        HashSet<String> found=new HashSet<>();
+        int photos=0;
+        long totalBytes=0;
+        byte[] buffer=new byte[16384];
+        try(java.util.zip.ZipInputStream zip=new java.util.zip.ZipInputStream(
+            new BufferedInputStream(source,32768))){
+            java.util.zip.ZipEntry entry;
+            int entries=0;
+            while((entry=zip.getNextEntry())!=null){
+                if(++entries>45)throw new IOException("Archivio con troppi file");
+                String name=entry.getName();
+                if("catalog.json".equals(name)){
+                    if(manifest!=null)throw new IOException("Manifesto catalogo duplicato");
+                    ByteArrayOutputStream content=new ByteArrayOutputStream();
+                    int n;
+                    while((n=zip.read(buffer))!=-1){
+                        if(content.size()+n>64000)throw new IOException("Manifesto troppo grande");
+                        content.write(buffer,0,n);
+                    }
+                    manifest=new JSONObject(content.toString("UTF-8"));
+                    if(!"fuoconero-veezie-catalog-v1".equals(manifest.optString("format")))
+                        throw new IOException("Formato catalogo non supportato");
+                }else if(name.matches("posters/(show|movie)_[0-9]{1,10}\\.png")){
+                    String filename=name.substring("posters/".length());
+                    File target=new File(folder,filename);
+                    File temp=new File(folder,filename+".import");
+                    boolean okay=false;
+                    long current=0;
+                    try(FileOutputStream out=new FileOutputStream(temp)){
+                        int n;
+                        while((n=zip.read(buffer))!=-1){
+                            current+=n;
+                            totalBytes+=n;
+                            if(current>2000000L||totalBytes>55000000L)
+                                throw new IOException("Immagini troppo grandi");
+                            out.write(buffer,0,n);
+                        }
+                    }
+                    if(current<128)throw new IOException("Locandina vuota: "+filename);
+                    // A PNG signature check avoids accepting a mislabeled or corrupt file.
+                    try(FileInputStream input=new FileInputStream(temp)){
+                        byte[] magic=new byte[8];
+                        if(input.read(magic)!=8 ||
+                            magic[0]!=(byte)137 || magic[1]!=80 ||
+                            magic[2]!=78 || magic[3]!=71)
+                            throw new IOException("Immagine PNG non valida: "+filename);
+                    }
+                    BitmapFactory.Options check=new BitmapFactory.Options();
+                    check.inJustDecodeBounds=true;
+                    BitmapFactory.decodeFile(temp.getAbsolutePath(),check);
+                    if(check.outWidth<100 || check.outWidth>2000 ||
+                        check.outHeight<100 || check.outHeight>3000)
+                        throw new IOException("Dimensioni immagine non ammesse: "+filename);
+                    if(target.exists()&&!target.delete())
+                        throw new IOException("Locandina esistente bloccata");
+                    okay=temp.renameTo(target);
+                    if(!okay)throw new IOException("Non riesco a salvare "+filename);
+                    found.add(filename);photos++;
+                }else if("LEGGIMI.txt".equals(name)){
+                    // Human-readable catalog note; ignore.
+                }else{
+                    throw new IOException("Archivio contiene un percorso imprevisto: "+name);
+                }
+                zip.closeEntry();
+            }
+        }
+        if(manifest==null)throw new IOException("Il catalogo non contiene catalog.json");
+        JSONArray list=manifest.optJSONArray("items");
+        if(list==null || list.length()!=30 || photos!=30)
+            throw new IOException("Attese 30 schede e 30 locandine; ricevute "+
+                (list==null?0:list.length())+" schede e "+photos+" locandine");
+        HashSet<String> ids=new HashSet<>();
+        ArrayList<Item> cards=new ArrayList<>();
+        for(int i=0;i<list.length();i++){
+            JSONObject info=list.getJSONObject(i);
+            String id=info.optString("id","");
+            String title=info.optString("title","").trim();
+            String type=info.optString("type","");
+            String poster=info.optString("poster","");
+            if(!id.matches("(show|movie)_[0-9]{1,10}") ||
+                !poster.equals("posters/"+id+".png") ||
+                !found.contains(id+".png") || title.length()<2 || title.length()>120 ||
+                !ids.add(id) || !type.equals(id.startsWith("show_")?"show":"movie"))
+                throw new IOException("Dati catalogo non validi: "+id);
+            Item item=new Item();
+            item.id=id;item.title=title;item.episode="show".equals(type);
+            item.description=item.episode?
+                "Catalogo Veezie: seleziona la puntata dall'elenco Episodi":
+                "Catalogo Veezie: apri per cercare il film";
+            cards.add(item);
+        }
+        long channel=channel(ctx);
+        // The import is complete and verified: replace just the local preview.
+        // Old Fuoconero TV Bridge applications and their channels are untouched.
+        updateCards(ctx,channel,cards,true);
+        int count=countCards(ctx,channel);
+        ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit()
+            .putInt("import_count",cards.size())
+            .putString("import_channel","Backup locale Veezie - 0.3.2")
+            .putInt("import_posters_copied",photos)
+            .putLong("import_timestamp",System.currentTimeMillis())
+            .putBoolean("prefer_veezie",true)
+            .apply();
+        return "IMPORTAZIONE RIUSCITA: "+count+" schede Android TV, "+
+            photos+" locandine locali.\nTrakt NON richiesto. "+
+            "Apri Projectivy e verifica Fuoconero · Veezie 0.3.5 TEST.";
+    }
+
     public static String importExisting(Context ctx)throws Exception {
         android.content.ContentResolver resolver=ctx.getContentResolver();
         long own=ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
@@ -825,7 +942,7 @@ public final class TvSync {
         v.put(TvContract.Channels.COLUMN_TYPE,TvContract.Channels.TYPE_PREVIEW);
         v.put(TvContract.Channels.COLUMN_DISPLAY_NAME,CHANNEL_NAME);
         v.put(TvContract.Channels.COLUMN_APP_LINK_INTENT_URI,app.toUri(Intent.URI_INTENT_SCHEME));
-        v.put(TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID,"fuoconero-veezie-034");
+        v.put(TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID,"fuoconero-veezie-035");
         Uri result=c.getContentResolver().insert(TvContract.Channels.CONTENT_URI,v);
         if(result==null)throw new Exception("Android TV non ha creato il canale.");
         long id=ContentUris.parseId(result);
@@ -920,7 +1037,7 @@ public final class TvSync {
                 poster=Uri.parse(item.importedPosterUri);
             }else{
                 poster=new Uri.Builder().scheme("content")
-                    .authority("com.fuoconero.tvbridge.test034.images")
+                    .authority("com.fuoconero.tvbridge.test035.images")
                     .appendPath("posters").appendPath(imageName)
                     .appendQueryParameter("v",String.valueOf(imageFile.lastModified())).build();
             }
