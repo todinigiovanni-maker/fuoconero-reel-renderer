@@ -21,7 +21,7 @@ public final class TvSync {
     public interface Progress { void say(String text); }
     private static final java.util.concurrent.atomic.AtomicBoolean SYNC_BUSY=new java.util.concurrent.atomic.AtomicBoolean(false);
     private static final String PREFS="tvbridge";
-    private static final String CHANNEL_NAME="Fuoconero · Veezie 0.3.3 TEST";
+    private static final String CHANNEL_NAME="Fuoconero · Veezie 0.3.4 TEST";
     private static class Item {
         String id,title,description,image,imdb;
         boolean episode;
@@ -40,6 +40,49 @@ public final class TvSync {
      * Only publicly published previews whose program/provider IDs match Fuoconero
      * are accepted. Poster copy uses the exported read-only image provider.
      */
+    // Create an independently usable Veezie preview channel before attempting
+    // any cross-app migration. Android TV ordinarily scopes provider reads to the
+    // owning package; an import from another app may legitimately be unavailable.
+    public static long ensureStarter(Context ctx)throws Exception {
+        long id=channel(ctx);
+        if(countCards(ctx,id)>0)return id;
+        File directory=new File(ctx.getFilesDir(),"posters");
+        if(!directory.exists()&&!directory.mkdirs())
+            throw new Exception("Cartella locandine non disponibile");
+        File image=new File(directory,"movie_openveezie.png");
+        Bitmap bmp=Bitmap.createBitmap(400,600,Bitmap.Config.ARGB_8888);
+        Canvas c=new Canvas(bmp);
+        c.drawColor(0xff181e34);
+        Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setColor(0xffff8c48);
+        p.setTypeface(Typeface.create("sans-serif",Typeface.BOLD));
+        p.setTextSize(74f);
+        c.drawText("VEEZIE",54,290,p);
+        p.setColor(Color.WHITE);p.setTextSize(39f);
+        c.drawText("APRI CATALOGO",36,362,p);
+        p.setTextSize(22f);
+        c.drawText("Fuoconero TV Bridge",70,530,p);
+        try(FileOutputStream out=new FileOutputStream(image)){
+            if(!bmp.compress(Bitmap.CompressFormat.PNG,95,out))
+                throw new Exception("Impossibile salvare la locandina Veezie");
+        }finally{bmp.recycle();}
+        Item item=new Item();
+        item.id="movie_openveezie";
+        item.title="Apri Veezie";
+        item.description="Apri Veezie. Catalogo indipendente da Trakt; recupero altre schede da completare.";
+        item.episode=false;
+        ArrayList<Item> cards=new ArrayList<>();cards.add(item);
+        updateCards(ctx,id,cards,false);
+        return id;
+    }
+    public static void requestVisibility(Context ctx){
+        long id=ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getLong("channel_id",-1L);
+        if(id<=0)return;
+        if(android.os.Build.VERSION.SDK_INT>=26){
+            try{TvContract.requestChannelBrowsable(ctx,id);}
+            catch(Exception e){android.util.Log.w("FuoconeroTV","Richiesta visibilita non supportata",e);}
+        }
+    }
     public static String importExisting(Context ctx)throws Exception {
         android.content.ContentResolver resolver=ctx.getContentResolver();
         long own=ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
@@ -302,6 +345,11 @@ public final class TvSync {
         long id=ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getLong("channel_id",-1);
         if(id<0)return "Nessuna riga Veezie ancora creata. Premi 1 per importare le locandine senza Trakt.";
         int cards=0,browsable=0,withProgress=0,withPoster=0;
+        int channelVisible=-1;
+        try(Cursor ch=ctx.getContentResolver().query(TvContract.buildChannelUri(id),
+            new String[]{TvContract.Channels.COLUMN_BROWSABLE},null,null,null)){
+            if(ch!=null&&ch.moveToFirst())channelVisible=ch.getInt(0);
+        }catch(Exception ignored){}
         Set<String> intents=new HashSet<>(),ids=new HashSet<>();
         try(Cursor cur=ctx.getContentResolver().query(TvContract.PreviewPrograms.CONTENT_URI,
             new String[]{TvContract.PreviewPrograms.COLUMN_CHANNEL_ID,
@@ -327,7 +375,9 @@ public final class TvSync {
         SharedPreferences stats=ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
         long lastSync=stats.getLong("last_sync_success",0L);
         long queued=stats.getLong("refresh_earliest_at",0L);
-        return "Fonte: Veezie (navigazione) / dati importati dalle vecchie righe"+
+        return "Canale Veezie visibile Android TV: "+
+            (channelVisible<0?"non determinato":channelVisible==1?"SI":"NO (premi Rendi visibile)")+
+            "\nFonte: Veezie (navigazione) / dati importati dalle vecchie righe"+
             "\nFonte locandine: "+stats.getString("import_channel","non ancora importate")+
             "\nLocandine importate: "+stats.getInt("import_count",0)+
             " (copiate: "+stats.getInt("import_posters_copied",0)+")"+
@@ -775,7 +825,7 @@ public final class TvSync {
         v.put(TvContract.Channels.COLUMN_TYPE,TvContract.Channels.TYPE_PREVIEW);
         v.put(TvContract.Channels.COLUMN_DISPLAY_NAME,CHANNEL_NAME);
         v.put(TvContract.Channels.COLUMN_APP_LINK_INTENT_URI,app.toUri(Intent.URI_INTENT_SCHEME));
-        v.put(TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID,"fuoconero-veezie-033");
+        v.put(TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID,"fuoconero-veezie-034");
         Uri result=c.getContentResolver().insert(TvContract.Channels.CONTENT_URI,v);
         if(result==null)throw new Exception("Android TV non ha creato il canale.");
         long id=ContentUris.parseId(result);
@@ -870,7 +920,7 @@ public final class TvSync {
                 poster=Uri.parse(item.importedPosterUri);
             }else{
                 poster=new Uri.Builder().scheme("content")
-                    .authority("com.fuoconero.tvbridge.test033.images")
+                    .authority("com.fuoconero.tvbridge.test034.images")
                     .appendPath("posters").appendPath(imageName)
                     .appendQueryParameter("v",String.valueOf(imageFile.lastModified())).build();
             }
