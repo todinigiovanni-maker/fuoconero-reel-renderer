@@ -3,11 +3,11 @@ android {
     namespace 'com.fuoconero.tvbridge'
     compileSdk 35
     defaultConfig {
-        applicationId 'com.fuoconero.tvbridge.test027'
+        applicationId 'com.fuoconero.tvbridge.test028'
         minSdk 26
         targetSdk 28
-        versionCode 27
-        versionName '0.2.7'
+        versionCode 28
+        versionName '0.2.8'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
