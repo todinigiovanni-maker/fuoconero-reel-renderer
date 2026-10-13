@@ -19,8 +19,9 @@ import java.security.MessageDigest;
 
 public final class TvSync {
     public interface Progress { void say(String text); }
+    private static final java.util.concurrent.atomic.AtomicBoolean SYNC_BUSY=new java.util.concurrent.atomic.AtomicBoolean(false);
     private static final String PREFS="tvbridge";
-    private static final String CHANNEL_NAME="Fuoconero · Trakt 0.2.9 TEST";
+    private static final String CHANNEL_NAME="Fuoconero · Trakt 0.3.0 TEST";
     private static class Item {
         String id,title,description,image,imdb;
         boolean episode;
@@ -33,6 +34,13 @@ public final class TvSync {
     }
     private TvSync(){}
     public static void perform(Context ctx,Progress notify)throws Exception {
+        if(!SYNC_BUSY.compareAndSet(false,true)){
+            notify.say("Una sincronizzazione Trakt e' gia' in corso.");
+            return;
+        }
+        try{
+        ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit()
+            .putLong("last_sync_started",System.currentTimeMillis()).apply();
         TraktApi trakt=new TraktApi(ctx);
         // Two API requests maximum: recent history plus playback percentages.
         LinkedHashMap<String,Item> items=new LinkedHashMap<>();
@@ -135,6 +143,8 @@ public final class TvSync {
         updateCards(ctx,channel,cards,complete);
         int visible=countCards(ctx,channel);
         SyncJob.schedule(ctx);
+        ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit()
+            .putLong("last_sync_success",System.currentTimeMillis()).apply();
         notify.say("Trakt: "+cards.size()+" titoli. Schede realmente presenti nel canale Android TV: "+visible+
             ".\nLocandine reali in cache: "+realPosters+"; segnaposto: "+(cards.size()-realPosters)+
             (complete?"":"\nSincronizzazione parziale: non ho eliminato le vecchie schede.")+
@@ -144,7 +154,10 @@ public final class TvSync {
             "; riepiloghi serie: "+showsWithRemaining+
             "; prossimi episodi verificati: "+showsWithNext+
             "; barre avanzamento serie: "+seriesBars+
-            "\nIl tempo indicato nelle schede delle serie e' la durata dell'episodio, non la posizione di riproduzione.");
+            "\nAggiornamento su ritorno da Veezie attivo quando l'Accessibilita' e' abilitata.");
+        }finally{
+            SYNC_BUSY.set(false);
+        }
     }
     public static String diagnose(Context ctx)throws Exception {
         long id=ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getLong("channel_id",-1);
@@ -173,12 +186,20 @@ public final class TvSync {
             }
         }
         SharedPreferences stats=ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
+        long lastSync=stats.getLong("last_sync_success",0L);
+        long queued=stats.getLong("refresh_earliest_at",0L);
         return "Schede Android TV: "+cards+
             "\nCollegamenti distinti: "+intents.size()+
             "\nContent ID distinti: "+ids.size()+
             "\nPoster con URI: "+withPoster+
             "\nSchede browsable: "+browsable+
             "\nBarra nativa Android TV: "+withProgress+
+            "\nUltima sincronizzazione: "+(lastSync>0?
+                new java.text.SimpleDateFormat("dd/MM HH:mm:ss",Locale.ITALY).format(new Date(lastSync)):
+                "mai")+
+            "\nAggiornamento dopo Veezie richiesto: "+(queued>0?
+                new java.text.SimpleDateFormat("dd/MM HH:mm:ss",Locale.ITALY).format(new Date(queued)):
+                "non ancora")+
             "\nElementi playback da Trakt: "+stats.getInt("last_playback_items",-1)+
             "\nElementi playback con %: "+stats.getInt("last_playback_with_progress",0)+
             "\nSchede con %: "+stats.getInt("last_cards_with_progress",0)+
@@ -701,7 +722,7 @@ public final class TvSync {
             File imageFile=new File(posterDir,imageName);
             // Changed URI when a poster is regenerated so launcher image caches refresh.
             Uri poster=new Uri.Builder().scheme("content")
-                .authority("com.fuoconero.tvbridge.test029.images")
+                .authority("com.fuoconero.tvbridge.test030.images")
                 .appendPath("posters").appendPath(imageName)
                 .appendQueryParameter("v",String.valueOf(imageFile.lastModified())).build();
             values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_URI,poster.toString());
