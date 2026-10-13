@@ -28,28 +28,53 @@ public final class TvSync {
     private TvSync(){}
     public static void perform(Context ctx,Progress notify)throws Exception {
         TraktApi trakt=new TraktApi(ctx);
-        // A paused/in-progress item is preferable to a fully watched history record.
+        // Start with history: one request normally yields all 30 cards.
+        // Never make a separate Trakt metadata request for each title.
         LinkedHashMap<String,Item> items=new LinkedHashMap<>();
-        try {
-            JSONArray paused=trakt.getArray("/sync/playback?extended=full");
-            ingest(trakt,paused,items,true,30);
-        } catch(TraktApi.ApiError e) {
-            // Some API plans/accounts do not expose sync/playback; history still works.
-            if(e.code==401)throw e;
-        }
+        JSONArray history=trakt.getArray("/sync/history?limit=60&extended=full");
+        ingest(trakt,history,items,false,30);
+        boolean complete=true;
         if(items.size()<30){
-            JSONArray history=trakt.getArray("/sync/history?limit=60&extended=full");
-            ingest(trakt,history,items,false,30);
+            try {
+                JSONArray paused=trakt.getArray("/sync/playback?extended=full");
+                ingest(trakt,paused,items,true,30);
+            } catch(TraktApi.ApiError e) {
+                if(e.code==429 && !items.isEmpty()) complete=false;
+                else throw e;
+            }
         }
-        if(items.isEmpty())throw new Exception("Trakt non ha restituito film o episodi recenti.");
-        notify.say("Recuperate "+items.size()+" schede. Scarico le locandine...");
+        if(items.isEmpty())throw new Exception("Trakt non ha restituito film o episodi recenti. La riga esistente non è stata modificata.");
+        notify.say("Trakt: "+items.size()+" titoli. Scarico le locandine...");
         ArrayList<Item> cards=new ArrayList<>(items.values());
         int realPosters=0;
-        for(Item item:cards){if(imageFor(ctx,item))realPosters++;} // Local cache; never hotlink Trakt images.
+        for(Item item:cards) {
+            if(imageFor(ctx,item))realPosters++;
+        }
         long channel=channel(ctx);
-        updateCards(ctx,channel,cards);
+        updateCards(ctx,channel,cards,complete);
+        int visible=countCards(ctx,channel);
         SyncJob.schedule(ctx);
-        notify.say("Riga aggiornata: "+cards.size()+" titoli da Trakt.\nLocandine reali: "+realPosters+"; segnaposto: "+(cards.size()-realPosters)+"\nLe schede aprono la home Veezie, non l'episodio.");
+        notify.say("Trakt: "+cards.size()+" titoli. Schede realmente presenti nel canale Android TV: "+visible+
+            ".\\nLocandine reali in cache: "+realPosters+"; segnaposto: "+(cards.size()-realPosters)+
+            (complete?"":"\\nSincronizzazione parziale: non ho eliminato le vecchie schede.")+
+            "\\nLe schede aprono la HOME di Veezie. Se qui risultano 30 e Projectivy ne mostra una, controlla la configurazione del launcher.");
+    }
+    public static int countCards(Context c) throws Exception {
+        long id=c.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getLong("channel_id",-1);
+        if(id<0)return 0;
+        return countCards(c,id);
+    }
+    private static int countCards(Context c,long channel) throws Exception {
+        int count=0;
+        try(Cursor cur=c.getContentResolver().query(TvContract.PreviewPrograms.CONTENT_URI,
+                new String[]{TvContract.PreviewPrograms.COLUMN_CHANNEL_ID,
+                    TvContract.PreviewPrograms.COLUMN_INTERNAL_PROVIDER_ID},null,null,null)){
+            if(cur!=null)while(cur.moveToNext()){
+                if(cur.getLong(0)==channel && cur.getString(1)!=null
+                    && cur.getString(1).startsWith("fuoconero:")) count++;
+            }
+        }
+        return count;
     }
     private static void ingest(TraktApi api,JSONArray arr,Map<String,Item> items,boolean paused,int limit)throws Exception{
         for(int i=0;i<arr.length() && items.size()<limit;i++){
@@ -74,12 +99,8 @@ public final class TvSync {
                 t.description=(paused?"In corso: ":"Ultimo episodio visto: ")+s+" · "+episode.optString("title","");
             }else t.description=paused?"Riproduzione in corso":"Nel tuo storico Trakt";
             t.image=posterUrl(media);
-            if(t.image.isEmpty()){
-                try{
-                    String path=(ep?"/shows/":"/movies/")+rawId+"?extended=full";
-                    t.image=posterUrl(api.get(path));
-                }catch(Exception ignored){}
-            }
+            // Trakt usually omits poster URLs. Prefer the existing IMDb image fallback;
+            // never issue dozens of individual Trakt detail requests.
             if(t.image.isEmpty()){ 
                 String imdb=ids.optString("imdb","");
                 if(imdb.matches("tt[0-9]{5,12}"))
@@ -109,7 +130,15 @@ public final class TvSync {
         File dir=new File(c.getFilesDir(),"posters");
         if(!dir.exists()&&!dir.mkdirs())throw new IOException("Impossibile creare cache locandine");
         File destination=new File(dir,item.id+".png");
-        if(destination.exists()&&destination.length()>1000 && System.currentTimeMillis()-destination.lastModified()<7L*86400000)return true;
+        File realMarker=new File(dir,item.id+".real");
+        File lastAttempt=new File(dir,item.id+".attempt");
+        long age=System.currentTimeMillis()-destination.lastModified();
+        if(destination.exists() && destination.length()>1000 && realMarker.exists()
+                && age<7L*86400000)return true;
+        // A cached placeholder is NOT a real poster. Retry occasionally, not on every sync.
+        if(destination.exists() && destination.length()>1000 && !realMarker.exists()
+                && lastAttempt.exists()
+                && System.currentTimeMillis()-lastAttempt.lastModified()<6L*3600000L)return false;
         Bitmap bmp=null;
         if(!item.image.isEmpty()){
             HttpURLConnection conn=null;
@@ -150,6 +179,7 @@ public final class TvSync {
             }catch(Exception ignored){} finally{if(con!=null)con.disconnect();}
         }
         boolean real=bmp!=null;
+        if(!real)android.util.Log.w("FuoconeroTV","Poster assente per "+item.title+" (IMDb="+item.imdb+")");
         if(bmp==null){
             bmp=Bitmap.createBitmap(450,675,Bitmap.Config.ARGB_8888);
             Canvas canvas=new Canvas(bmp);canvas.drawColor(Color.rgb(19,23,38));
@@ -166,6 +196,15 @@ public final class TvSync {
         bmp.recycle();
         if(destination.exists()&&!destination.delete())throw new IOException("Impossibile sostituire locandina");
         if(!temp.renameTo(destination))throw new IOException("Salvataggio locandina fallito");
+        // Markers allow us to distinguish placeholder PNGs from successfully downloaded images.
+        if(real) {
+            if(!realMarker.exists())realMarker.createNewFile();
+            if(lastAttempt.exists())lastAttempt.delete();
+        } else {
+            if(realMarker.exists())realMarker.delete();
+            if(!lastAttempt.exists())lastAttempt.createNewFile();
+            lastAttempt.setLastModified(System.currentTimeMillis());
+        }
         return real;
     }
     private static long channel(Context c)throws Exception {
@@ -202,7 +241,7 @@ public final class TvSync {
         logo.recycle();
         return id;
     }
-    private static void updateCards(Context c,long channel,ArrayList<Item> cards)throws Exception {
+    private static void updateCards(Context c,long channel,ArrayList<Item> cards,boolean complete)throws Exception {
         Map<String,Long> existing=new HashMap<>();
         ArrayList<Long> duplicates=new ArrayList<>();
         // Android TV explicitly forbids SQL selections for PreviewPrograms.
@@ -248,7 +287,7 @@ public final class TvSync {
                     throw new Exception("Inserimento locandina fallito: "+item.title);
             }
         }
-        for(Map.Entry<String,Long> old:existing.entrySet())if(!retained.contains(old.getKey()))
+        if(complete)for(Map.Entry<String,Long> old:existing.entrySet())if(!retained.contains(old.getKey()))
             c.getContentResolver().delete(TvContract.buildPreviewProgramUri(old.getValue()),null,null);
         for(long id:duplicates)c.getContentResolver().delete(TvContract.buildPreviewProgramUri(id),null,null);
     }
