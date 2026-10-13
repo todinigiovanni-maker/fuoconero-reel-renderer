@@ -495,7 +495,7 @@ public final class TvSync {
             boolean hasNext=!item.nextSeason.isEmpty();
             boolean seriesProgress=item.episodesTotal>0 && item.episodesWatched>=0 &&
                 item.episodesWatched<=item.episodesTotal;
-            float top=height*(seriesProgress?0.73f:(hasNext?0.795f:0.84f));
+            float top=height*(seriesProgress?0.68f:(hasNext?0.795f:0.84f));
             p.setColor(0xEC131C2C);
             canvas.drawRect(0,top,width,height,p);
             p.setTypeface(Typeface.create("sans-serif",Typeface.BOLD));
