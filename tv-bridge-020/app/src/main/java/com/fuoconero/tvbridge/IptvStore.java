@@ -45,7 +45,8 @@ public final class IptvStore extends SQLiteOpenHelper {
     }
     private static String clean(String text,int max){
         if(text==null)return "";
-        return text.replaceAll("[\\p{Cntrl}&&[^\\t]]"," ").trim().substring(0,Math.min(text.trim().length(),max));
+        String normalized=text.replaceAll("[\\p{Cntrl}&&[^\\t]]"," ").trim();
+        return normalized.substring(0,Math.min(normalized.length(),max));
     }
     private static boolean isAdult(String group,String title){
         String x=(group+" "+title).toLowerCase(Locale.ROOT);
@@ -167,6 +168,8 @@ public final class IptvStore extends SQLiteOpenHelper {
         StringBuilder query=new StringBuilder("SELECT id,title,grp,url,category,kind,adult,fav FROM entries WHERE ");
         if("Preferiti".equals(category))query.append("fav=1 AND adult=0");
         else if("Adulti".equals(category))query.append("adult=1");
+        else if("Adulti TV".equals(category))query.append("adult=1 AND kind='TV'");
+        else if("Adulti Video".equals(category))query.append("adult=1 AND kind<>'TV'");
         else if("Tutti".equals(category))query.append("adult=0");
         else{query.append("category=? AND adult=0");args.add(category);}
         if(search!=null && !search.trim().isEmpty()){
