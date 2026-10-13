@@ -2,6 +2,13 @@ package com.fuoconero.tvbridge;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.os.Build;
+import android.os.Environment;
+import java.io.File;
+import java.util.Collections;
+import java.util.Comparator;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
@@ -25,6 +32,7 @@ import java.util.concurrent.Executors;
 
 public class IptvActivity extends Activity {
     private static final int PICK_M3U=440;
+    private static final int READ_M3U_PERMISSION=441;
     private static final long PIN_WINDOW=5L*60L*1000L;
     private LinearLayout root,contentArea;
     private TextView status;
@@ -52,14 +60,9 @@ public class IptvActivity extends Activity {
         status.setPadding(0,12,0,15);
         root.addView(status);
 
-        button(root,"1 · Scegli file M3U dalla memoria TV",()->{
-            Intent pick=new Intent(Intent.ACTION_OPEN_DOCUMENT);
-            pick.setType("*/*");
-            pick.addCategory(Intent.CATEGORY_OPENABLE);
-            pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-            try{startActivityForResult(pick,PICK_M3U);}
-            catch(Exception e){showStatus("Selezione file non disponibile: "+e.getMessage());}
-        });
+        button(root,"1 · IMPORTA M3U DALLA CARTELLA DOWNLOAD",this::importFromDownloads);
+        label(root,"Legge direttamente i file .m3u e .m3u8 dalla TV senza chiedere un gestore file. Mantiene il nome originale.",14,0xffc3cbde,false);
+        label(root,"Playlist selezionata: "+prefs.getString("source_name","nessuna"),14,0xffffc391,false);
         label(root,"Oppure configura una sola volta l'URL della playlist per aggiornarla in automatico:",14,Color.WHITE,false);
         remoteUrl=new EditText(this);
         remoteUrl.setText(prefs.getString("source_url",""));
@@ -113,9 +116,88 @@ public class IptvActivity extends Activity {
         try{
             getContentResolver().takePersistableUriPermission(selected,Intent.FLAG_GRANT_READ_URI_PERMISSION);
         }catch(Exception ignored){ /* still usable for initial import */ }
-        prefs.edit().putString("source_uri",selected.toString()).remove("source_url").apply();
+        prefs.edit().putString("source_uri",selected.toString())
+            .putString("source_name",selected.getLastPathSegment())
+            .remove("source_path").remove("source_url").apply();
         refresh();
     }
+
+    private void importFromDownloads(){
+        // Some Android TV versions restrict public Downloads; when this
+        // happens app-private storage is a supported ADB-copy fallback.
+        if(Build.VERSION.SDK_INT>=23 && Build.VERSION.SDK_INT<=32 &&
+            checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE)
+                !=PackageManager.PERMISSION_GRANTED){
+            requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
+                READ_M3U_PERMISSION);
+            return;
+        }
+        scanLocalM3u();
+    }
+
+    @Override public void onRequestPermissionsResult(int requestCode,
+        String[] permissions,int[] grantResults){
+        super.onRequestPermissionsResult(requestCode,permissions,grantResults);
+        if(requestCode!=READ_M3U_PERMISSION)return;
+        if(grantResults.length==0 ||
+            grantResults[0]!=PackageManager.PERMISSION_GRANTED){
+            showStatus("Android non consente l'accesso a Download. "+
+                "Puoi copiare la M3U nello spazio dell'app tramite ADB.");
+            return;
+        }
+        scanLocalM3u();
+    }
+
+    private void scanLocalM3u(){
+        ArrayList<File> matches=new ArrayList<>();
+        File privateDir=getFilesDir();
+        addM3uFiles(privateDir,matches);
+        File externalPrivate=getExternalFilesDir(null);
+        addM3uFiles(externalPrivate,matches);
+        File publicDownloads=Environment.getExternalStoragePublicDirectory(
+            Environment.DIRECTORY_DOWNLOADS);
+        addM3uFiles(publicDownloads,matches);
+        if(matches.isEmpty()){
+            showStatus("Non trovo M3U leggibili nella cartella Download. "+
+                "Se Android blocca l'accesso, puoi copiarla con ADB "+
+                "nella cartella privata del Bridge.");
+            return;
+        }
+        Collections.sort(matches,Comparator.comparingLong(File::lastModified).reversed());
+        if(matches.size()==1){
+            selectM3u(matches.get(0));return;
+        }
+        String[] names=new String[matches.size()];
+        for(int i=0;i<matches.size();i++){
+            File file=matches.get(i);
+            names[i]=file.getName()+
+                (file.getParentFile().equals(publicDownloads)?" · Download":" · IPTV");
+        }
+        new AlertDialog.Builder(this)
+            .setTitle("Scegli la M3U, mantenendo il nome originale")
+            .setItems(names,(d,which)->selectM3u(matches.get(which)))
+            .setNegativeButton("Annulla",null).show();
+    }
+    private static void addM3uFiles(File directory,ArrayList<File> output){
+        if(directory==null||!directory.isDirectory())return;
+        File[] files=directory.listFiles();
+        if(files==null)return;
+        for(File file:files){
+            String name=file.getName().toLowerCase(Locale.ROOT);
+            if(file.isFile()&&file.canRead()&&file.length()>0&&
+                (name.endsWith(".m3u")||name.endsWith(".m3u8")))
+                output.add(file);
+        }
+    }
+    private void selectM3u(File selected){
+        prefs.edit().putString("source_path",selected.getAbsolutePath())
+            .putString("source_name",selected.getName())
+            .remove("source_uri").remove("source_url").apply();
+        showStatus("Avvio l'importazione di "+selected.getName()+
+            " ("+Math.max(1,selected.length()/(1024*1024))+" MB).");
+        refresh();
+    }
+
     private void refresh(){
         showStatus("Importazione in corso. La lista e' molto grande: lascia aperta questa schermata.");
         worker.execute(()->{
