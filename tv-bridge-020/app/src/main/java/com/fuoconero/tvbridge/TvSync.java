@@ -20,7 +20,7 @@ import java.security.MessageDigest;
 public final class TvSync {
     public interface Progress { void say(String text); }
     private static final String PREFS="tvbridge";
-    private static final String CHANNEL_NAME="Fuoconero · Storico Trakt";
+    private static final String CHANNEL_NAME="Fuoconero · Trakt 0.2.4 TEST";
     private static class Item {
         String id,title,description,image,imdb;
         boolean episode;
@@ -281,7 +281,7 @@ public final class TvSync {
             values.put(TvContract.PreviewPrograms.COLUMN_SHORT_DESCRIPTION,item.description);
             values.put(TvContract.PreviewPrograms.COLUMN_INTERNAL_PROVIDER_ID,key);
             values.put(TvContract.PreviewPrograms.COLUMN_WEIGHT,999-i);
-            Uri poster=Uri.parse("content://com.fuoconero.tvbridge.images/posters/"+item.id+".png");
+            Uri poster=Uri.parse("content://com.fuoconero.tvbridge.test024.images/posters/"+item.id+".png");
             values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_URI,poster.toString());
             values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_ASPECT_RATIO,TvContract.PreviewPrograms.ASPECT_RATIO_2_3);
             Intent intent=new Intent(c,OpenContentActivity.class);
