@@ -22,7 +22,7 @@ public final class TvSync {
     private static final String PREFS="tvbridge";
     private static final String CHANNEL_NAME="Fuoconero · Storico Trakt";
     private static class Item {
-        String id,title,description,image;
+        String id,title,description,image,imdb;
         boolean episode;
     }
     private TvSync(){}
@@ -44,11 +44,12 @@ public final class TvSync {
         if(items.isEmpty())throw new Exception("Trakt non ha restituito film o episodi recenti.");
         notify.say("Recuperate "+items.size()+" schede. Scarico le locandine...");
         ArrayList<Item> cards=new ArrayList<>(items.values());
-        for(Item item:cards) imageFor(ctx,item); // Cache, never hotlink the Trakt CDN.
+        int realPosters=0;
+        for(Item item:cards){if(imageFor(ctx,item))realPosters++;} // Local cache; never hotlink Trakt images.
         long channel=channel(ctx);
         updateCards(ctx,channel,cards);
         SyncJob.schedule(ctx);
-        notify.say("Riga aggiornata: "+cards.size()+" titoli da Trakt.\nLe schede aprono la home Veezie, non l'episodio.");
+        notify.say("Riga aggiornata: "+cards.size()+" titoli da Trakt.\nLocandine reali: "+realPosters+"; segnaposto: "+(cards.size()-realPosters)+"\nLe schede aprono la home Veezie, non l'episodio.");
     }
     private static void ingest(TraktApi api,JSONArray arr,Map<String,Item> items,boolean paused,int limit)throws Exception{
         for(int i=0;i<arr.length() && items.size()<limit;i++){
@@ -66,7 +67,7 @@ public final class TvSync {
             String key=(ep?"show_":"movie_")+rawId;
             if(items.containsKey(key))continue;
             Item t=new Item();t.episode=ep;t.id=key;
-            t.title=media.optString("title","Senza titolo");
+            t.title=media.optString("title","Senza titolo");t.imdb=ids.optString("imdb","");
             JSONObject episode=entry.optJSONObject("episode");
             if(ep && episode!=null){
                 String s=String.format(Locale.ITALY,"S%02dE%02d",episode.optInt("season"),episode.optInt("number"));
@@ -104,11 +105,11 @@ public final class TvSync {
         }catch(Exception e){return "";}
         return value;
     }
-    private static void imageFor(Context c,Item item)throws Exception {
+    private static boolean imageFor(Context c,Item item)throws Exception {
         File dir=new File(c.getFilesDir(),"posters");
         if(!dir.exists()&&!dir.mkdirs())throw new IOException("Impossibile creare cache locandine");
         File destination=new File(dir,item.id+".png");
-        if(destination.exists()&&destination.length()>1000 && System.currentTimeMillis()-destination.lastModified()<7L*86400000)return;
+        if(destination.exists()&&destination.length()>1000 && System.currentTimeMillis()-destination.lastModified()<7L*86400000)return true;
         Bitmap bmp=null;
         if(!item.image.isEmpty()){
             HttpURLConnection conn=null;
@@ -129,6 +130,26 @@ public final class TvSync {
             }catch(Exception ignored){}
             finally{if(conn!=null)conn.disconnect();}
         }
+        if(bmp==null && item.imdb!=null && item.imdb.matches("tt[0-9]{5,12}")){
+            String fallback="https://images.metahub.space/poster/medium/"+item.imdb+"/img";
+            HttpURLConnection con=null;
+            try{
+                con=(HttpURLConnection)new URL(fallback).openConnection();
+                con.setConnectTimeout(9000);con.setReadTimeout(11000);
+                if(con.getResponseCode()==200){
+                    String mime=con.getContentType();
+                    if(mime==null||mime.startsWith("image/")){
+                        try(InputStream in=con.getInputStream(); ByteArrayOutputStream out=new ByteArrayOutputStream()){
+                            byte[] buf=new byte[8192];int n,total=0;
+                            while((n=in.read(buf))!=-1){total+=n;if(total>4*1024*1024)throw new IOException("Poster troppo grande");out.write(buf,0,n);}
+                            byte[] bytes=out.toByteArray();
+                            bmp=BitmapFactory.decodeByteArray(bytes,0,bytes.length);
+                        }
+                    }
+                }
+            }catch(Exception ignored){} finally{if(con!=null)con.disconnect();}
+        }
+        boolean real=bmp!=null;
         if(bmp==null){
             bmp=Bitmap.createBitmap(450,675,Bitmap.Config.ARGB_8888);
             Canvas canvas=new Canvas(bmp);canvas.drawColor(Color.rgb(19,23,38));
@@ -145,6 +166,7 @@ public final class TvSync {
         bmp.recycle();
         if(destination.exists()&&!destination.delete())throw new IOException("Impossibile sostituire locandina");
         if(!temp.renameTo(destination))throw new IOException("Salvataggio locandina fallito");
+        return real;
     }
     private static long channel(Context c)throws Exception {
         SharedPreferences prefs=c.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
