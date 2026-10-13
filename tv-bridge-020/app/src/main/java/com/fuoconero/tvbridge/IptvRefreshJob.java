@@ -74,7 +74,7 @@ public class IptvRefreshJob extends JobService {
         connection.setConnectTimeout(15000);
         connection.setReadTimeout(120000);
         connection.setInstanceFollowRedirects(true);
-        connection.setRequestProperty("User-Agent","FuoconeroIPTV/0.4.0");
+        connection.setRequestProperty("User-Agent","FuoconeroIPTV/0.4.2");
         int result=connection.getResponseCode();
         if(result<200 || result>=300){
             connection.disconnect();
