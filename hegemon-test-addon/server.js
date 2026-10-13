@@ -1,11 +1,11 @@
 'use strict';
 const http = require('node:http');
 const id = 'tt1254207';
-const movie = {id, type:'movie', name:'Big Buck Bunny (test MP4 di 10 secondi)', description:'Clip diagnostica MP4/H.264, senza torrent.', releaseInfo:'2008'};
+const movie = {id, type:'movie', name:'Big Buck Bunny (film completo MP4)', description:'Film pubblico diagnostico di circa 10 minuti, MP4 H.264 senza torrent.', releaseInfo:'2008'};
 const manifest = {
-  id:'com.fuoconero.hegemon.mp4test', version:'1.0.1', name:'Fuoconero - Test MP4',
+  id:'com.fuoconero.hegemon.mp4test', version:'1.0.2', name:'Fuoconero - Test MP4',
   logo:'https://www.stremio.com/website/stremio-logo-small.png',
-  description:'Un solo MP4 pubblico di 10 secondi per testare il lettore Hegemon.',
+  description:'Un MP4 pubblico di circa 10 minuti per testare il lettore Hegemon.',
   resources:['catalog','stream'], types:['movie'], idPrefixes:['tt'],
   catalogs:[{type:'movie',id:'fuoconero_test',name:'Fuoconero Test MP4'}]
 };
@@ -23,8 +23,8 @@ const server = http.createServer((req,res)=>{
   if(p==='/catalog/movie/fuoconero_test.json')return send(res,200,{metas:[movie]});
   if(p===`/meta/movie/${id}.json`)return send(res,200,{meta:movie});
   if(p===`/stream/movie/${id}.json`)return send(res,200,{streams:[{
-    name:'Fuoconero - MP4 pubblico',title:'Big Buck Bunny - clip 10 secondi',
-    url:'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4'
+    name:'Fuoconero - MP4 pubblico',title:'Big Buck Bunny - film completo circa 10 minuti',
+    url:'https://uploads.video-commander.com/sample/BigBuckBunny.mp4'
   }]});
   if(p.startsWith('/stream/'))return send(res,200,{streams:[]});
   if(p.startsWith('/catalog/'))return send(res,200,{metas:[]});
@@ -38,3 +38,12 @@ setTimeout(async () => {
     console.log('[PUBLIC CHECK]',response.status,response.headers.get('content-type'),(await response.text()).slice(0,100));
   } catch(e) {console.log('[PUBLIC CHECK FAILED]',String(e));}
 },8000);
+
+setTimeout(async () => {
+  try {
+    const r = await fetch('https://uploads.video-commander.com/sample/BigBuckBunny.mp4', {
+      method:'HEAD', signal:AbortSignal.timeout(12000)
+    });
+    console.log('[VIDEO CHECK]', r.status, r.headers.get('content-type'), r.headers.get('content-length'), r.headers.get('accept-ranges'));
+  } catch(e) { console.log('[VIDEO CHECK FAILED]', String(e)); }
+}, 9000);
