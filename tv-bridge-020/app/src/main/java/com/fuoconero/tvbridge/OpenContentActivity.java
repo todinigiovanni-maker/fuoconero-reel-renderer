@@ -22,6 +22,12 @@ public class OpenContentActivity extends Activity {
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
         Intent clicked=getIntent();
+        if(clicked!=null && clicked.getData()!=null &&
+            "movie_openveezie".equals(clicked.getData().getLastPathSegment())){
+            openVeezie(this);
+            finish();
+            return;
+        }
         String title=clicked==null?"":clicked.getStringExtra("title");
         if(title==null)title="";
         String season=clicked==null?"":clicked.getStringExtra("season");
