@@ -175,7 +175,6 @@ public class VeezieNavService extends AccessibilityService {
             return seconds;
         }catch(NumberFormatException e){return -1;}
     }
-    }
     @Override public void onInterrupt(){halt("Interrotto");}
     @Override public void onDestroy(){
         halt("Servizio interrotto");
