@@ -2,7 +2,7 @@ name: Fuoconero TV Bridge 0.5.3 SAFE TEST APK
 on:
   push:
     branches:
-      - fuoconero-iptv-052-library-watch
+      - fuoconero-iptv-053-fullscreen-hd
     paths:
       - 'tv-bridge-020/**'
       - '.github/workflows/fuoconero-tv-bridge-020.yml'
@@ -38,7 +38,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.android/debug.keystore
-          key: fuoconero-iptv-052-test-signing-v1
+          key: fuoconero-iptv-053-test-signing-v2
+      - name: Ensure persistent debug signing identity
+        run: |
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair -noprompt -keystore "$HOME/.android/debug.keystore" \
+              -alias androiddebugkey -storepass android -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Fuoconero IPTV Debug, O=Fuoconero, C=IT"
+          fi
       - name: Build APK
         working-directory: tv-bridge-020
         run: gradle --no-daemon --stacktrace :app:assembleDebug
