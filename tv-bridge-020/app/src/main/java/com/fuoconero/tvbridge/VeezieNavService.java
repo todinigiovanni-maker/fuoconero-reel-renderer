@@ -42,9 +42,29 @@ public class VeezieNavService extends AccessibilityService {
         queue();
     }
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {
-        if(event==null||event.getPackageName()==null||
-            !"st.veezie".contentEquals(event.getPackageName()))return;
-        queue();
+        if(event==null||event.getPackageName()==null)return;
+        String pkg=event.getPackageName().toString();
+        long now=System.currentTimeMillis();
+        SharedPreferences p=getSharedPreferences(PREFS,MODE_PRIVATE);
+        if("st.veezie".equals(pkg)){
+            // Only record activity in Veezie. Never inspect unrelated applications.
+            if(event.getEventType()==AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+                ||event.getEventType()==AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+                p.edit().putLong("last_veezie_event",now).apply();
+            queue();
+            return;
+        }
+        if("com.spocky.projengmenu".equals(pkg) &&
+            event.getEventType()==AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED){
+            long watched=p.getLong("last_veezie_event",0L);
+            long requested=p.getLong("last_projectivy_refresh",0L);
+            // Once per Veezie visit and only on returning to Projectivy.
+            // The job runs no sooner than the cooldown and only with network.
+            if(watched>requested && now-watched>=0 && now-watched<6L*60L*60L*1000L){
+                p.edit().putLong("last_projectivy_refresh",now).apply();
+                SyncJob.requestRefresh(getApplicationContext());
+            }
+        }
     }
     @Override public void onInterrupt(){halt("Interrotto");}
     @Override public void onDestroy(){
