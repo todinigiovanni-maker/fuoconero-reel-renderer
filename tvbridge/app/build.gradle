@@ -1,0 +1,7 @@
+plugins { id 'com.android.application' }
+android {
+  namespace 'com.fuoconero.tvbridge'
+  compileSdk 35
+  defaultConfig { applicationId 'com.fuoconero.tvbridge'; minSdk 26; targetSdk 28; versionCode 22; versionName '0.2.2' }
+  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
