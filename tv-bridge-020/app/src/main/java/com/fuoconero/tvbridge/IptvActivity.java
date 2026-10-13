@@ -87,8 +87,8 @@ public class IptvActivity extends Activity {
             });
         });
         label(root,"LE TUE CATEGORIE",20,Color.WHITE,true);
-        for(String c:new String[]{"Preferiti","TV Italia","Sport","Documentari","Film","Serie","Altri canali","Tutti"}){
-            button(root,"▶ "+c,()->showCategory(c,0,""));
+        for(String c:new String[]{"Preferiti","Novita","TV Italia","Sport","Documentari","Film","Serie","Altri canali","Tutti"}){
+            button(root,"▶ "+("Novita".equals(c)?"Novità della playlist":c),()->showCategory(c,0,""));
         }
         button(root,"🔒 Area riservata adulti (PIN)",()->unlockAdult(()->showAdultHome()));
         contentArea=new LinearLayout(this);
