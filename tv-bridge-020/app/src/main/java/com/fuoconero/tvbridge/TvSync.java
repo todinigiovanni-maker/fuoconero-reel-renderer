@@ -20,7 +20,7 @@ import java.security.MessageDigest;
 public final class TvSync {
     public interface Progress { void say(String text); }
     private static final String PREFS="tvbridge";
-    private static final String CHANNEL_NAME="Fuoconero · Trakt 0.2.8 TEST";
+    private static final String CHANNEL_NAME="Fuoconero · Trakt 0.2.9 TEST";
     private static class Item {
         String id,title,description,image,imdb;
         boolean episode;
@@ -701,7 +701,7 @@ public final class TvSync {
             File imageFile=new File(posterDir,imageName);
             // Changed URI when a poster is regenerated so launcher image caches refresh.
             Uri poster=new Uri.Builder().scheme("content")
-                .authority("com.fuoconero.tvbridge.test028.images")
+                .authority("com.fuoconero.tvbridge.test029.images")
                 .appendPath("posters").appendPath(imageName)
                 .appendQueryParameter("v",String.valueOf(imageFile.lastModified())).build();
             values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_URI,poster.toString());
