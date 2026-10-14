@@ -96,24 +96,25 @@ public final class IptvMetadata {
             db.beginTransactionNonExclusive();
             try(JsonReader reader=new JsonReader(new InputStreamReader(limited,"UTF-8"));
                 SQLiteStatement put=db.compileStatement(series?
-                    "INSERT OR REPLACE INTO source_series(series_key,updated_at,artwork) VALUES(?,MAX(?,COALESCE((SELECT updated_at FROM source_series WHERE series_key=?),0)),?)":
-                    "INSERT OR REPLACE INTO source_movies(media_id,added_at,artwork) VALUES(?,?,?)")){
+                    "INSERT OR REPLACE INTO source_series(series_key,updated_at,artwork,tmdb) VALUES(?,MAX(?,COALESCE((SELECT updated_at FROM source_series WHERE series_key=?),0)),?,?)":
+                    "INSERT OR REPLACE INTO source_movies(media_id,added_at,artwork,tmdb) VALUES(?,?,?,?)")){
                 reader.beginArray();
                 int rows=0;
                 while(reader.hasNext()){
                     if(++rows>200000)throw new IOException("Metadata item limit");
-                    String id="",name="",date="",image="";
+                    String id="",name="",date="",image="",tmdb="";
                     reader.beginObject();
                     while(reader.hasNext()){
                         String key=reader.nextName();
                         boolean wanted=key.equals(series?"last_modified":"added") ||
-                            key.equals(series?"cover":"stream_icon") || key.equals("name") || key.equals("stream_id");
+                            key.equals(series?"cover":"stream_icon") || key.equals("name") || key.equals("stream_id") || key.equals("tmdb");
                         if(!wanted || reader.peek()==JsonToken.NULL ||
                            !(reader.peek()==JsonToken.STRING || reader.peek()==JsonToken.NUMBER)){
                             reader.skipValue();continue;
                         }
                         String value=reader.nextString();
                         if(key.equals("name"))name=value;
+                        else if(key.equals("tmdb"))tmdb=value;
                         else if(key.equals("stream_id"))id=value;
                         else if(key.equals(series?"cover":"stream_icon"))image=value;
                         else date=value;
@@ -127,6 +128,13 @@ public final class IptvMetadata {
                     if(series){
                         String key=name.trim().replaceAll("\\s+"," ").toLowerCase(Locale.ROOT);
                         if(!shows.contains(key))continue;
+                        try(Cursor known=db.rawQuery("SELECT tmdb FROM source_series WHERE series_key=?",new String[]{key})){
+                            if(known.moveToFirst()){
+                                String old=known.getString(0);
+                                if("ambiguous".equals(old) || (old.matches("[1-9][0-9]*")&&tmdb.matches("[1-9][0-9]*")&&!old.equals(tmdb)))tmdb="ambiguous";
+                                else if(tmdb.isEmpty()&&old.matches("[1-9][0-9]*"))tmdb=old;
+                            }
+                        }
                         put.bindString(1,key);
                     }else{
                         Long media=movieIds.get(id);if(media==null || media<0)continue;
@@ -135,6 +143,7 @@ public final class IptvMetadata {
                     put.bindLong(2,time);
                     if(series){put.bindString(3,name.trim().replaceAll("\\s+"," ").toLowerCase(Locale.ROOT));put.bindString(4,image);}
                     else put.bindString(3,image);
+                    put.bindString(series?5:4,tmdb.matches("[1-9][0-9]*") || (series&&"ambiguous".equals(tmdb))?tmdb:"");
                     put.executeInsert();matched++;
                 }
                 reader.endArray();db.setTransactionSuccessful();

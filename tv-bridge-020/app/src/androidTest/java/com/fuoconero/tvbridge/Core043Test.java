@@ -83,6 +83,15 @@ public class Core043Test {
         Field progress=type.getDeclaredField("progress");progress.setAccessible(true);assertEquals(-1,progress.getDouble(item),0);
         watched.setLong(item,0);apply.invoke(null,ctx,item);assertTrue(progress.getDouble(item)>0);
     }
+    @Test public void verifiedIdentityMergesSourcesWithoutMergingRemakes(){
+        try(RecentStore store=new RecentStore(ctx)){
+            RecentStore.Entry a=new RecentStore.Entry();a.key="movie_trakt";a.title="TEST FILM";a.intent="intent:#Intent;end";a.at=1000;a.identity="movie:tmdb:1";store.save(a);
+            RecentStore.Entry b=new RecentStore.Entry();b.key="iptv_1";b.title="TEST FILM";b.intent="intent:#Intent;end";b.at=2000;b.identity="movie:tmdb:1";store.save(b);
+            assertEquals(1,store.list(20).size());assertEquals("iptv_1",store.list(20).get(0).key);
+            a.identity="movie:tmdb:2";a.at=3000;store.save(a);assertEquals(2,store.list(20).size());
+            store.remove("iptv_1");b.key="another_source";store.save(b);assertEquals(1,store.list(20).size());
+        }
+    }
     @Test public void m3uIdentifiersAndFavouriteSurviveRefresh()throws Exception{
         String m3u="#EXTM3U\n#EXTINF:-1 tvg-id=\"rai1\" group-title=\"Italia\",RAI 1 HD\nhttps://example.invalid/live/u/p/1.ts\n";
         try(IptvStore store=new IptvStore(ctx)){

@@ -17,8 +17,10 @@ l'immagine e aggiungono un pannello leggibile per titolo, episodio e stato.
 Le immagini mancanti producono una scheda con testo, non un'immagine inventata.
 La schermata principale nell'app mostra righe orizzontali, card da 310 dp,
 bordo arancione e zoom della selezione. OK apre, pressione lunga di OK rimuove
-un elemento dai recenti. Le identità conservano fonte e ID del contenuto:
-titoli simili o remake non vengono uniti arbitrariamente.
+un elemento dai recenti. Le identità conservano fonte e ID del contenuto;
+fra Veezie/Trakt e IPTV si uniscono soltanto contenuti con ID TMDB verificato
+uguale (e stessa stagione/puntata per le serie). Titoli simili o remake non
+vengono uniti arbitrariamente.
 
 Android TV consente di dichiarare la proporzione dell'immagine; non offre
 un parametro per imporre la larghezza in pixel delle card di Projectivy.

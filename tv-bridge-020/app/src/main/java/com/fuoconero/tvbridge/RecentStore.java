@@ -11,32 +11,43 @@ import java.util.*;
 
 /** One local, bounded public history. Opening never means watched. */
 public final class RecentStore extends SQLiteOpenHelper {
+    private static final Object HISTORY_LOCK=new Object();
     public static final String CHANNEL="🔥 FUOCONERO — CONTINUA A GUARDARE";
     private final Context app;
     public static final class Entry {
-        public String key,title,description,intent,art,source;
+        public String key,title,description,intent,art,source,identity="";
         public long at,position,duration;
         public double percent=-1;
     }
-    public RecentStore(Context c){super(c,"recent043.db",null,1);app=c.getApplicationContext();setWriteAheadLoggingEnabled(true);}
+    public RecentStore(Context c){super(c,"recent043.db",null,2);app=c.getApplicationContext();setWriteAheadLoggingEnabled(true);}
     @Override public void onCreate(SQLiteDatabase d){
-        d.execSQL("CREATE TABLE recent(key TEXT PRIMARY KEY,title TEXT NOT NULL,description TEXT NOT NULL,intent TEXT NOT NULL,art TEXT NOT NULL,source TEXT NOT NULL,at INTEGER NOT NULL,position INTEGER NOT NULL,duration INTEGER NOT NULL,percent REAL NOT NULL)");
+        d.execSQL("CREATE TABLE recent(key TEXT PRIMARY KEY,title TEXT NOT NULL,description TEXT NOT NULL,intent TEXT NOT NULL,art TEXT NOT NULL,source TEXT NOT NULL,at INTEGER NOT NULL,position INTEGER NOT NULL,duration INTEGER NOT NULL,percent REAL NOT NULL,identity TEXT NOT NULL DEFAULT '')");
         d.execSQL("CREATE TABLE hidden(key TEXT PRIMARY KEY,at INTEGER NOT NULL)");
         d.execSQL("CREATE INDEX recent_order ON recent(at DESC)");
     }
-    @Override public void onUpgrade(SQLiteDatabase d,int a,int b){}
+    @Override public void onUpgrade(SQLiteDatabase d,int a,int b){if(a<2)d.execSQL("ALTER TABLE recent ADD COLUMN identity TEXT NOT NULL DEFAULT ''");}
     public void save(Entry e){
+        synchronized(HISTORY_LOCK){saveLocked(e);}
+    }
+    private void saveLocked(Entry e){
         if(e.key==null || e.title==null || e.intent==null || e.at<=0)return;
         String classified=e.title.toLowerCase(Locale.ROOT);
         if(classified.contains("xxx")||classified.contains("porno")||classified.contains("18+")||classified.contains("adult"))return;
         SQLiteDatabase d=getWritableDatabase();
-        try(Cursor c=d.rawQuery("SELECT at FROM hidden WHERE key=?",new String[]{e.key})){
-            if(c.moveToFirst() && e.at<=c.getLong(0))return;
+        try(Cursor c=d.rawQuery("SELECT MAX(at) FROM hidden WHERE key IN (?,?)",new String[]{e.key,"identity:"+e.identity})){
+            if(c.moveToFirst() && !c.isNull(0) && e.at<=c.getLong(0))return;
+        }
+        if(e.identity!=null&&!e.identity.isEmpty()){
+            try(Cursor c=d.rawQuery("SELECT key,at FROM recent WHERE identity=? AND key<>?",new String[]{e.identity,e.key})){
+                while(c.moveToNext())if(c.getLong(1)>e.at)return;
+            }
+            d.delete("recent","identity=? AND key<>?",new String[]{e.identity,e.key});
         }
         ContentValues v=new ContentValues();
         v.put("key",e.key);v.put("title",e.title);v.put("description",e.description==null?"":e.description);
         v.put("intent",e.intent);v.put("art",e.art==null?"":e.art);v.put("source",e.source==null?"Aperto":e.source);
         v.put("at",e.at);v.put("position",Math.max(0,e.position));v.put("duration",Math.max(0,e.duration));v.put("percent",e.percent);
+        v.put("identity",e.identity==null?"":e.identity);
         // A sync may update the next episode, but may not make old activity look recent.
         try(Cursor c=d.rawQuery("SELECT at FROM recent WHERE key=?",new String[]{e.key})){
             if(c.moveToFirst())v.put("at",Math.max(e.at,c.getLong(0)));
@@ -46,15 +57,21 @@ public final class RecentStore extends SQLiteOpenHelper {
     }
     public ArrayList<Entry> list(int limit){
         ArrayList<Entry> out=new ArrayList<>();
-        try(Cursor c=getReadableDatabase().rawQuery("SELECT key,title,description,intent,art,source,at,position,duration,percent FROM recent ORDER BY at DESC,key LIMIT ?",new String[]{String.valueOf(limit)})){
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT key,title,description,intent,art,source,at,position,duration,percent,identity FROM recent ORDER BY at DESC,key LIMIT ?",new String[]{String.valueOf(limit)})){
             while(c.moveToNext()){
                 Entry e=new Entry();e.key=c.getString(0);e.title=c.getString(1);e.description=c.getString(2);e.intent=c.getString(3);
-                e.art=c.getString(4);e.source=c.getString(5);e.at=c.getLong(6);e.position=c.getLong(7);e.duration=c.getLong(8);e.percent=c.getDouble(9);out.add(e);
+                e.art=c.getString(4);e.source=c.getString(5);e.at=c.getLong(6);e.position=c.getLong(7);e.duration=c.getLong(8);e.percent=c.getDouble(9);e.identity=c.getString(10);out.add(e);
             }
         }
         return out;
     }
     public void remove(String key){
+        synchronized(HISTORY_LOCK){removeLocked(key);}
+    }
+    private void removeLocked(String key){
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT identity FROM recent WHERE key=?",new String[]{key})){
+            if(c.moveToFirst()&&!c.getString(0).isEmpty())getWritableDatabase().execSQL("INSERT OR REPLACE INTO hidden VALUES(?,?)",new Object[]{"identity:"+c.getString(0),System.currentTimeMillis()});
+        }
         getWritableDatabase().execSQL("INSERT OR REPLACE INTO hidden VALUES(?,?)",new Object[]{key,System.currentTimeMillis()});
         getWritableDatabase().delete("recent","key=?",new String[]{key});
         // Progress stays available if the viewer deliberately opens the title again.
@@ -67,6 +84,7 @@ public final class RecentStore extends SQLiteOpenHelper {
     public static void iptv(Context c,IptvStore.Media m,long at,long position,long duration){
         if(m==null||m.adult)return;
         Entry e=new Entry();e.key="iptv_"+m.id;e.title=m.title;e.at=at;e.position=position;e.duration="TV".equals(m.kind)?0:duration;
+        try(IptvLibrary library=new IptvLibrary(c)){e.identity=library.identity(m.id);}
         e.percent=e.duration>0?Math.min(100,100.0*position/e.duration):-1;
         e.source="TV".equals(m.kind)?"Canale IPTV · aperto":e.duration>0?"Riproduzione IPTV":"Aperto IPTV";
         e.description=e.duration>0?"Riprendi · "+WideArtwork.clock(position)+" / "+WideArtwork.clock(duration):
@@ -93,6 +111,12 @@ public final class RecentStore extends SQLiteOpenHelper {
         if(duration<=0 || position<0 || position>duration)return;
         try(RecentStore s=new RecentStore(c)){
             Entry e=new Entry();e.key=id;e.title=title;e.at=System.currentTimeMillis();e.position=position;e.duration=duration;
+            for(Entry old:s.list(200))if(old.key.equals(id)){
+                e.identity=old.identity;
+                if(!season.isEmpty()&&!episode.isEmpty()&&e.identity.startsWith("show:tmdb:"))
+                    e.identity=e.identity.replaceAll(":s[0-9]+:e[0-9]+$",":s"+Integer.parseInt(season)+":e"+Integer.parseInt(episode));
+                break;
+            }
             e.percent=100.0*position/duration;e.source="Veezie";
             e.description=(season.isEmpty()?"Film":"S"+season+"E"+episode)+" · "+WideArtwork.clock(position)+" / "+WideArtwork.clock(duration);
             e.art=image(c,id+".png");

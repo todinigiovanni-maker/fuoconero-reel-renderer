@@ -37,7 +37,7 @@ public final class IptvLibrary extends SQLiteOpenHelper {
         public long positionMs,durationMs,openedAt;
     }
     public IptvLibrary(Context ctx){
-        super(ctx,"fuoconero_library.db",null,2);
+        super(ctx,"fuoconero_library.db",null,3);
         app=ctx.getApplicationContext();
         setWriteAheadLoggingEnabled(true);
     }
@@ -56,10 +56,29 @@ public final class IptvLibrary extends SQLiteOpenHelper {
         createSourceTables(db);
     }
     private static void createSourceTables(SQLiteDatabase db){
-        db.execSQL("CREATE TABLE IF NOT EXISTS source_movies(media_id INTEGER PRIMARY KEY, added_at INTEGER NOT NULL, artwork TEXT NOT NULL)");
-        db.execSQL("CREATE TABLE IF NOT EXISTS source_series(series_key TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, artwork TEXT NOT NULL)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS source_movies(media_id INTEGER PRIMARY KEY, added_at INTEGER NOT NULL, artwork TEXT NOT NULL, tmdb TEXT NOT NULL DEFAULT '')");
+        db.execSQL("CREATE TABLE IF NOT EXISTS source_series(series_key TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, artwork TEXT NOT NULL, tmdb TEXT NOT NULL DEFAULT '')");
     }
-    @Override public void onUpgrade(SQLiteDatabase db,int oldV,int newV){createSourceTables(db);}
+    @Override public void onUpgrade(SQLiteDatabase db,int oldV,int newV){
+        createSourceTables(db);
+        for(String table:new String[]{"source_movies","source_series"}){
+            boolean has=false;try(Cursor c=db.rawQuery("PRAGMA table_info("+table+")",null)){while(c.moveToNext())if("tmdb".equals(c.getString(1)))has=true;}
+            if(!has)db.execSQL("ALTER TABLE "+table+" ADD COLUMN tmdb TEXT NOT NULL DEFAULT ''");
+        }
+        app.getSharedPreferences("iptv_metadata",Context.MODE_PRIVATE).edit().remove("success").apply();
+    }
+    public String identity(long mediaId){
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT tmdb FROM source_movies WHERE media_id=?",new String[]{String.valueOf(mediaId)})){
+            if(c.moveToFirst()&&c.getString(0).matches("[1-9][0-9]*"))return "movie:tmdb:"+c.getString(0);
+        }
+        try(Cursor c=getReadableDatabase().rawQuery(
+            "SELECT s.tmdb,i.season,i.episode FROM source_series s JOIN series_index i ON i.series_key=s.series_key WHERE i.media_id=?",
+            new String[]{String.valueOf(mediaId)})){
+            if(c.moveToFirst()&&c.getString(0).matches("[1-9][0-9]*")&&c.getInt(1)>0&&c.getInt(2)>0)
+                return "show:tmdb:"+c.getString(0)+":s"+c.getInt(1)+":e"+c.getInt(2);
+        }
+        return "";
+    }
     public String artwork(long mediaId){
         try(Cursor c=getReadableDatabase().rawQuery(
             "SELECT artwork FROM source_movies WHERE media_id=? UNION ALL "+
@@ -261,3 +280,4 @@ public final class IptvLibrary extends SQLiteOpenHelper {
         return result;
     }
 }
+

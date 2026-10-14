@@ -29,6 +29,7 @@ public final class TvSync {
         long positionMs=-1,durationMs=-1;
         String progressSource="Trakt";
         long recentAt=0,watchedAt=0;
+        String tmdb="";
         int runtimeMinutes=0;
         String season="",episodeNumber="",episodeTitle="";
         String nextSeason="",nextEpisodeNumber="",nextEpisodeTitle="";
@@ -564,6 +565,7 @@ public final class TvSync {
             t.recentAt=eventTime(entry.optString(paused?"paused_at":"watched_at",""));
             t.watchedAt=paused?0:t.recentAt;
             t.title=media.optString("title","Senza titolo");t.imdb=ids.optString("imdb","");
+            t.tmdb=ids.optString("tmdb","");
             t.runtimeMinutes=Math.max(0,media.optInt("runtime",0)); // show's average episode runtime is a fallback
             JSONObject episode=entry.optJSONObject("episode");
             if(ep && episode!=null){
@@ -1041,6 +1043,11 @@ public final class TvSync {
                     .putExtra("season",targetSeason)
                     .putExtra("episode_number",targetEpisode);
                 RecentStore.Entry e=new RecentStore.Entry();e.key=item.id;e.title=item.title;e.at=item.recentAt;
+                if(item.tmdb.matches("[1-9][0-9]*")){
+                    if(!item.episode)e.identity="movie:tmdb:"+item.tmdb;
+                    else if(targetSeason.matches("[0-9]{1,3}")&&targetEpisode.matches("[0-9]{1,3}"))
+                        e.identity="show:tmdb:"+item.tmdb+":s"+Integer.parseInt(targetSeason)+":e"+Integer.parseInt(targetEpisode);
+                }
                 e.description=!item.nextSeason.isEmpty()?"Prossima S"+item.nextSeason+"E"+item.nextEpisodeNumber+" · "+item.nextEpisodeTitle:item.description;
                 e.art=RecentStore.image(c,item.id+".png");e.intent=intent.toUri(Intent.URI_INTENT_SCHEME);
                 e.source=item.progressSource;e.percent=item.progress;

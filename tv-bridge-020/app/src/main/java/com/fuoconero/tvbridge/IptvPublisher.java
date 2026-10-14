@@ -25,6 +25,10 @@ public final class IptvPublisher {
     private IptvPublisher(){}
     public static synchronized String publish(Context ctx)throws Exception{
         IptvMetadata.refresh(ctx);
+        try(IptvLibrary lib=new IptvLibrary(ctx)){
+            for(IptvLibrary.Recent recent:lib.recentlyOpened(100))
+                RecentStore.iptv(ctx,recent.media,recent.openedAt,recent.positionMs,recent.durationMs);
+        }
         IptvStore store=new IptvStore(ctx);
         SharedPreferences prefs=ctx.getSharedPreferences("iptv_channels",Context.MODE_PRIVATE);
         String custom=ctx.getSharedPreferences(IptvStore.PREFS,Context.MODE_PRIVATE)
