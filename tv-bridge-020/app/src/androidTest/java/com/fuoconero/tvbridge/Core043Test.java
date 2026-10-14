@@ -14,6 +14,20 @@ import org.json.JSONObject;
 
 /** Real Android SQLite/XML parser tests, isolated from the user's databases. */
 public class Core043Test {
+    @Test public void hourlyRefreshReplacesLegacySchedules(){
+        Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        android.app.job.JobScheduler s=(android.app.job.JobScheduler)c.getSystemService(Context.JOB_SCHEDULER_SERVICE);
+        s.schedule(new android.app.job.JobInfo.Builder(4304,new ComponentName(c,HomeRefreshJob.class)).setPeriodic(15L*60*1000).build());
+        s.schedule(new android.app.job.JobInfo.Builder(4080,new ComponentName(c,IptvRefreshJob.class)).setPeriodic(12L*3600*1000).build());
+        HomeRefreshJob.schedule(c);
+        android.app.job.JobInfo job=s.getPendingJob(4304);
+        assertEquals(3600000L,job.getIntervalMillis());
+        assertEquals(android.app.job.JobInfo.NETWORK_TYPE_ANY,job.getNetworkType());
+        assertNull(s.getPendingJob(4080));assertNull(s.getPendingJob(4303));
+        IptvRefreshJob.schedule(c);EpgRefreshJob.schedule(c);
+        assertEquals(3600000L,s.getPendingJob(4304).getIntervalMillis());
+        assertNull(s.getPendingJob(4080));assertNull(s.getPendingJob(4303));
+    }
     private Context ctx;
     @Before public void setup(){
         Context target=InstrumentationRegistry.getInstrumentation().getTargetContext();

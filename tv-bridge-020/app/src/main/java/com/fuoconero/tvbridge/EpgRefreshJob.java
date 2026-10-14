@@ -43,14 +43,7 @@ public class EpgRefreshJob extends JobService {
         }finally{if(connection!=null)connection.disconnect();BUSY.set(false);}
     }
     public static void schedule(Context c){
-        android.content.SharedPreferences p=c.getSharedPreferences("epg",MODE_PRIVATE);
-        if(p.getString("url","").isEmpty()&&p.getString("uri","").isEmpty())return;
-        JobScheduler scheduler=(JobScheduler)c.getSystemService(JOB_SCHEDULER_SERVICE);
-        if(scheduler==null)return;
-        JobInfo old=scheduler.getPendingJob(4303);
-        if(old!=null)return;
-        scheduler.schedule(new JobInfo.Builder(4303,new ComponentName(c,EpgRefreshJob.class))
-            .setPeriodic(6L*3600*1000).setRequiredNetworkType(p.getString("url","").isEmpty()?JobInfo.NETWORK_TYPE_NONE:JobInfo.NETWORK_TYPE_ANY).build());
+        HomeRefreshJob.schedule(c);
     }
     public static void reschedule(Context c){
         JobScheduler s=(JobScheduler)c.getSystemService(JOB_SCHEDULER_SERVICE);if(s!=null)s.cancel(4303);schedule(c);

@@ -114,24 +114,7 @@ public class IptvRefreshJob extends JobService {
         };
     }
     public static void schedule(Context ctx){
-        SharedPreferences p=ctx.getSharedPreferences(IptvStore.PREFS,Context.MODE_PRIVATE);
-        boolean online=!p.getString("source_url","").isEmpty();
-        boolean local=!p.getString("source_uri","").isEmpty()||
-            !p.getString("source_path","").isEmpty();
-        if(!online&&!local)return;
-        JobScheduler scheduler=(JobScheduler)ctx.getSystemService(Context.JOB_SCHEDULER_SERVICE);
-        if(scheduler==null)return;
-        // Keep an existing periodic job: replacing it resets its execution window.
-        JobInfo pending=scheduler.getPendingJob(JOB_ID);
-        int network=online?JobInfo.NETWORK_TYPE_ANY:JobInfo.NETWORK_TYPE_NONE;
-        if(pending!=null && pending.isPeriodic() && pending.getIntervalMillis()==PERIOD
-            && pending.getFlexMillis()==FLEX
-            && pending.getNetworkType()==network)return;
-        JobInfo info=new JobInfo.Builder(JOB_ID,new ComponentName(ctx,IptvRefreshJob.class))
-            .setPeriodic(PERIOD,FLEX)
-            .setRequiredNetworkType(online?JobInfo.NETWORK_TYPE_ANY:JobInfo.NETWORK_TYPE_NONE)
-            .setPersisted(false).build();
-        scheduler.schedule(info);
+        HomeRefreshJob.schedule(ctx);
     }
 }
 
