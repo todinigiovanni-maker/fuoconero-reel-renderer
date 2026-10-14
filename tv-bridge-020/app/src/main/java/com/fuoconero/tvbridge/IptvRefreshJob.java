@@ -21,6 +21,7 @@ import java.net.URL;
 public class IptvRefreshJob extends JobService {
     static final int JOB_ID=4080;
     static final long PERIOD=12L*60*60*1000;
+    static final long FLEX=Math.max(JobInfo.getMinFlexMillis(),Math.max(30L*60*1000,PERIOD/20));
     private static final java.util.concurrent.atomic.AtomicBoolean UPDATING=
         new java.util.concurrent.atomic.AtomicBoolean(false);
     public static boolean isUpdating(){return UPDATING.get();}
@@ -124,10 +125,10 @@ public class IptvRefreshJob extends JobService {
         JobInfo pending=scheduler.getPendingJob(JOB_ID);
         int network=online?JobInfo.NETWORK_TYPE_ANY:JobInfo.NETWORK_TYPE_NONE;
         if(pending!=null && pending.isPeriodic() && pending.getIntervalMillis()==PERIOD
-            && pending.getFlexMillis()==30L*60*1000
+            && pending.getFlexMillis()==FLEX
             && pending.getNetworkType()==network)return;
         JobInfo info=new JobInfo.Builder(JOB_ID,new ComponentName(ctx,IptvRefreshJob.class))
-            .setPeriodic(PERIOD,30L*60*1000)
+            .setPeriodic(PERIOD,FLEX)
             .setRequiredNetworkType(online?JobInfo.NETWORK_TYPE_ANY:JobInfo.NETWORK_TYPE_NONE)
             .setPersisted(false).build();
         scheduler.schedule(info);
