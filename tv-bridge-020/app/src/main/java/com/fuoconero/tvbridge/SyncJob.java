@@ -26,7 +26,7 @@ public class SyncJob extends JobService {
                 SharedPreferences state=getSharedPreferences("tvbridge",MODE_PRIVATE);
                 long now=System.currentTimeMillis();
                 long previous=state.getLong("last_sync_started",0L);
-                if(previous>0 && now-previous<MIN_INTERVAL_MS){
+                if(params.getJobId()!=2022 && previous>0 && now-previous<MIN_INTERVAL_MS){
                     // Another manual/automatic refresh ran recently.
                     if(params.getJobId()==RETURN_JOB)
                         requestRefresh(this);
@@ -79,3 +79,4 @@ public class SyncJob extends JobService {
         scheduler.schedule(info);
     }
 }
+

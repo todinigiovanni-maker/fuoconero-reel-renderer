@@ -25,5 +25,7 @@
              android:resource="@xml/veezie_accessibility" />
        </service>
        <service android:name=".SyncJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true" />
+    <receiver android:name=".RefreshReceiver" android:exported="true" />
     </application>
 </manifest>
+

@@ -1187,6 +1187,7 @@ public final class TvSync {
                 c.getContentResolver().delete(TvContract.buildPreviewProgramUri(old.getValue()),null,null);
         }
         for(long id:duplicates)c.getContentResolver().delete(TvContract.buildPreviewProgramUri(id),null,null);
+        RefreshActionCard.publish(c,channel);
     }
     public static void removeChannel(Context c){
         SharedPreferences p=c.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
