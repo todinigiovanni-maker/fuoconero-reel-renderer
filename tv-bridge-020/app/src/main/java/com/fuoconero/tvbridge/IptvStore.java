@@ -100,7 +100,7 @@ public final class IptvStore extends SQLiteOpenHelper {
         MessageDigest sha=MessageDigest.getInstance("SHA-256");
         byte[] hash=sha.digest((grp+"\n"+title+"\n"+url).getBytes(StandardCharsets.UTF_8));
         StringBuilder b=new StringBuilder(32);
-        for(int i=0;i<16;i++)b.append(String.format(Locale.ROOT,"%02x",hash[i]&255));
+        for(int i=0;i<16;i++){int v=hash[i]&255;b.append("0123456789abcdef".charAt(v>>>4)).append("0123456789abcdef".charAt(v&15));}
         return b.toString();
     }
     /**
@@ -109,7 +109,7 @@ public final class IptvStore extends SQLiteOpenHelper {
      */
     public String importPlaylist(Context context,InputStream input,Progress progress)throws Exception{
         SharedPreferences prefs=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
-        long now=System.currentTimeMillis(),count=0;
+        long now=System.currentTimeMillis(),count=0,added=0,films=0,episodes=0,removed=0;
         org.json.JSONObject sourceGroups;
         try{sourceGroups=new org.json.JSONObject(prefs.getString("source_group_categories","{}"));}
         catch(org.json.JSONException e){throw new IOException("Filtro gruppi non valido; catalogo conservato");}
@@ -167,7 +167,8 @@ public final class IptvStore extends SQLiteOpenHelper {
                     put.bindLong(11,now);
                     put.bindString(12,ident);
                     put.bindString(13,tvgId);
-                    put.executeInsert();
+                    put.executeInsert();added++;
+                    if(!adult){if("Film".equals(kind))films++;else if("Video".equals(kind))episodes++;}
                     }
                     count++;
                     info=null;
@@ -176,13 +177,18 @@ public final class IptvStore extends SQLiteOpenHelper {
                 }
             }
             if(count<1)throw new IOException("Il file non contiene flussi M3U validi.");
-            db.execSQL("DELETE FROM entries WHERE seen<>?",new Object[]{now});
+            removed=db.delete("entries","seen<>?",new String[]{String.valueOf(now)});
             db.setTransactionSuccessful();
         }finally{db.endTransaction();}
-        prefs.edit().putLong("last_success",now)
-            .putLong("item_count",count)
+        long revision=prefs.getLong("catalog_revision",prefs.getLong("last_success",now));
+        if(added>0||removed>0)revision=Math.max(now,revision+1);
+        prefs.edit().putLong("catalog_revision",revision)
+            .putLong("new_films",prev==0?0:films).putLong("new_episodes",prev==0?0:episodes)
+            .putLong("last_checked",System.currentTimeMillis()).putString("refresh_error", "")
+            .putLong("last_success",now)
+            .putLong("item_count",count())
             .putLong("successful_imports",prev+1)
-            .putLong("new_from",prev==0?Long.MAX_VALUE:now).apply();
+            .putLong("new_from",prev==0?Long.MAX_VALUE:added>0?now:prefs.getLong("new_from",Long.MAX_VALUE)).apply();
         return "Playlist indicizzata: "+count+" contenuti; categorie pronte. "+
             (prev==0?"Primo caricamento: nessuna novita' ancora confrontabile.":"Novita' confrontate con l'importazione precedente.");
     }

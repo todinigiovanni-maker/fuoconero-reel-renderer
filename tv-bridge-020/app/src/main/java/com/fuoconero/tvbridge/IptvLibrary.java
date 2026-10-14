@@ -105,7 +105,7 @@ public final class IptvLibrary extends SQLiteOpenHelper {
     public synchronized void ensureIndex() {
         SQLiteDatabase db=getWritableDatabase();
         long lastSuccess=app.getSharedPreferences(IptvStore.PREFS,Context.MODE_PRIVATE)
-            .getLong("last_success",0);
+            .getLong("catalog_revision",app.getSharedPreferences(IptvStore.PREFS,Context.MODE_PRIVATE).getLong("last_success",0));
         if(lastSuccess<=0)return;
         try(Cursor state=db.rawQuery("SELECT indexed_at FROM index_state WHERE id=1",null)){
             if(state.moveToFirst() && state.getLong(0)==lastSuccess)return;

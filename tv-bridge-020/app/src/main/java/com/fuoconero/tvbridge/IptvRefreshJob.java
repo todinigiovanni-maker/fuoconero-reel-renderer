@@ -58,6 +58,9 @@ public class IptvRefreshJob extends JobService {
                 String projectivy=IptvPublisher.publish(ctx);
                 return result+"\n"+projectivy;
             }
+        }catch(Exception e){
+            ctx.getSharedPreferences(IptvStore.PREFS,Context.MODE_PRIVATE).edit().putString("refresh_error","Lista non aggiornata: controlla rete o sorgente").apply();
+            RefreshActionCard.refreshExisting(ctx);throw e;
         }finally{
             UPDATING.set(false);
         }

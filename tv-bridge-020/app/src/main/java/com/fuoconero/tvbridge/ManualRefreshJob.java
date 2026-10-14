@@ -32,7 +32,7 @@ public class ManualRefreshJob extends JobService {
                 status(this,errors.isEmpty()?"Aggiornamento completato. Richiesta inviata anche alla riga Veezie/Trakt 0.3.7.":"Aggiornamento parziale. Da riprovare: "+android.text.TextUtils.join(", ",errors)+". I dati precedenti restano disponibili.");
                 getSharedPreferences("manual_refresh",MODE_PRIVATE).edit().putLong("completed",System.currentTimeMillis()).apply();
             }catch(Exception e){status(this,"Aggiornamento interrotto. Riprova tra un minuto.");}
-            finally{HomeRefreshJob.BUSY.set(false);jobFinished(p,false);}
+            finally{RefreshActionCard.refreshExisting(this);HomeRefreshJob.BUSY.set(false);jobFinished(p,false);}
         },"FuoconeroManualRefresh").start();return true;
     }
     @Override public boolean onStopJob(JobParameters p){return true;}

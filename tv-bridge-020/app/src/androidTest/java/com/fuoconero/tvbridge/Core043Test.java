@@ -154,5 +154,30 @@ public class Core043Test {
             assertEquals(id,store.list("TV Italia","",0,1).get(0).id);assertTrue(store.find(id).fav);
         }
     }
+    @Test public void unchangedImportKeepsIndexAndCountsOnlyNewUniqueItems()throws Exception{
+        String first="#EXTM3U\n#EXTINF:-1 group-title=\"Serie\",TEST S01E01\nhttps://example.invalid/series/u/p/1.mp4\n";
+        String movie="#EXTINF:-1 group-title=\"Film\",TEST MOVIE\nhttps://example.invalid/movie/u/p/2.mp4\n";
+        SharedPreferences p=ctx.getSharedPreferences(IptvStore.PREFS,0);
+        try(IptvStore store=new IptvStore(ctx);IptvLibrary lib=new IptvLibrary(ctx)){
+            store.importPlaylist(ctx,new ByteArrayInputStream(first.getBytes(StandardCharsets.UTF_8)),null);
+            lib.ensureIndex();long revision=p.getLong("catalog_revision",0);
+            lib.getWritableDatabase().execSQL("UPDATE series_index SET display_title='INDEX RETAINED'");
+            store.importPlaylist(ctx,new ByteArrayInputStream(first.getBytes(StandardCharsets.UTF_8)),null);
+            assertEquals(revision,p.getLong("catalog_revision",-1));lib.ensureIndex();
+            try(android.database.Cursor q=lib.getReadableDatabase().rawQuery("SELECT display_title FROM series_index",null)){assertTrue(q.moveToFirst());assertEquals("INDEX RETAINED",q.getString(0));}
+            assertEquals(0,p.getLong("new_episodes",-1));
+            store.importPlaylist(ctx,new ByteArrayInputStream((first+movie+movie).getBytes(StandardCharsets.UTF_8)),null);
+            assertEquals(1,p.getLong("new_films",-1));assertEquals(2,p.getLong("item_count",-1));
+            assertTrue(p.getLong("catalog_revision",0)>revision);
+            assertTrue(RefreshActionCard.summary(ctx).contains("1 film e 0 episodi nuovi"));
+            long changed=p.getLong("catalog_revision",0);
+            store.importPlaylist(ctx,new ByteArrayInputStream(first.getBytes(StandardCharsets.UTF_8)),null);
+            assertTrue(p.getLong("catalog_revision",0)>changed);
+            p.edit().putString("refresh_error","Errore di rete").commit();
+            assertTrue(RefreshActionCard.summary(ctx).contains("Errore di rete"));
+            try{store.importPlaylist(ctx,new ByteArrayInputStream(new byte[0]),null);fail("Empty playlist accepted");}catch(IOException expected){}
+            assertEquals(1,store.count());assertTrue(RefreshActionCard.summary(ctx).contains("Errore di rete"));
+        }
+    }
 }
 

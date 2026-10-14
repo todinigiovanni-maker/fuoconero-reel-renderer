@@ -54,7 +54,7 @@ public class HomeRefreshJob extends JobService {
             }
             IptvPublisher.publish(this);RecentStore.publish(this);
             getSharedPreferences("auto043",MODE_PRIVATE).edit().putLong("last_completed",System.currentTimeMillis()).apply();
-        }catch(Exception ignored){}finally{BUSY.set(false);jobFinished(p,false);}},"Fuoconero043Home").start();return true;
+        }catch(Exception ignored){}finally{RefreshActionCard.refreshExisting(this);BUSY.set(false);jobFinished(p,false);}},"Fuoconero043Home").start();return true;
     }
     @Override public boolean onStopJob(JobParameters p){return true;}
 }
