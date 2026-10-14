@@ -215,6 +215,7 @@ public final class IptvStore extends SQLiteOpenHelper {
     }
     private static int qualityScore(String title,String key){
         String u=title.toUpperCase(Locale.ROOT);
+        if(u.matches(".*\\b(?:HEVC|H\\.?\\s*265)\\b.*"))return -1; // explicitly excluded by user
         if(!HD_QUALITY.matcher(u).find())return u.matches(".*\\bSD\\b.*")?50:100; // fallback only when no HD variant exists
         int score=0;
         if(u.matches(".*\\bHD\\b.*")&&!u.matches(".*\\bFULL\\s*HD\\b.*"))score=600;
@@ -306,6 +307,7 @@ public final class IptvStore extends SQLiteOpenHelper {
             while(c.moveToNext()){
                 String key=c.getInt(2)+":"+canonicalLiveName(c.getString(1));
                 int score=qualityScore(c.getString(1),canonicalLiveName(c.getString(1)));
+                if(score<0)continue;
                 if(!scores.containsKey(key)||score>scores.get(key)){ids.put(key,c.getLong(0));scores.put(key,score);}
             }
         }

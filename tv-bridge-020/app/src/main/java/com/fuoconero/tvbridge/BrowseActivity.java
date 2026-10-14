@@ -89,7 +89,10 @@ public class BrowseActivity extends Activity {
                 }
             }catch(Exception ignored){}
             // Provider reads are scoped and cannot use SQL sorting/selections.
-            for(Section s:channels.values())if(!s.cards.isEmpty())sections.add(s);
+            for(Section s:channels.values())if(!s.cards.isEmpty()){
+                s.cards.sort(Comparator.comparingInt(c->SearchActionCard.KEY.equals(c.key)?-2:RefreshActionCard.KEY.equals(c.key)?-1:0));
+                sections.add(s);
+            }
             long recent=getSharedPreferences("tvbridge",MODE_PRIVATE).getLong("channel_id",-1);
             sections.sort((a,b)->a.id==b.id?0:a.id==recent?-1:b.id==recent?1:a.title.compareTo(b.title));
             // Explicit recent order comes from the local history, not provider row IDs.

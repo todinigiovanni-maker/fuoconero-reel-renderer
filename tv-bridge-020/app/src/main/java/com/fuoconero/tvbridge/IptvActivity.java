@@ -194,6 +194,13 @@ public class IptvActivity extends Activity {
     }
     private void routeIntent(Intent intent){
         if(intent==null)return;
+        String searchCategory=intent.getStringExtra("search_category");
+        if(searchCategory!=null){
+            if(!java.util.Arrays.asList(IptvStore.PUBLIC_GROUPS).contains(searchCategory))return;
+            if(searchCategory.startsWith("Adulti"))unlockAdult(()->promptCategorySearch(searchCategory));
+            else promptCategorySearch(searchCategory);
+            return;
+        }
         long adult=intent.getLongExtra("adult_media_id",-1L);
         if(adult>=0){unlockAdult(()->openMedia(adult));return;}
         String key=intent.getStringExtra("series_key");
@@ -216,6 +223,19 @@ public class IptvActivity extends Activity {
             return;
         }
         showMainMenu();
+    }
+    private void promptCategorySearch(String requested){
+        final String category="Ultimi film".equals(requested)?"Film":requested;
+        EditText input=new EditText(this);input.setSingleLine(true);input.setHint("Scrivi il titolo o il canale");
+        input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Cerca in "+category).setView(input)
+            .setPositiveButton("Cerca",(d,w)->showCategory(category,0,input.getText().toString().trim()))
+            .setNegativeButton("Annulla",(d,w)->showCategory(category,0,"")).create();
+        dialog.setOnShowListener(d->{input.requestFocus();dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);});
+        input.setOnEditorActionListener((v,action,event)->{
+            if(action==android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH){dialog.dismiss();showCategory(category,0,input.getText().toString().trim());return true;}return false;
+        });
+        dialog.show();
     }
     private int beginContent(String category,int at){
         viewGeneration++;

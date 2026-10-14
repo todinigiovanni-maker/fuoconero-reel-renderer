@@ -31,9 +31,9 @@ public class Core043Test {
     }
     @Test public void liveVariantsAcrossCategoriesKeepHdAndVod()throws Exception{
         try(IptvStore store=new IptvStore(ctx)){
-            String[] titles={"Cinema Uno SD","Cinema Uno H264","Cinema Uno HD","Cinema Uno FHD","Cinema Uno HD +1","Local SD","A Film SD","A Film HD"};
+            String[] titles={"Cinema Uno SD","Cinema Uno H264","Cinema Uno HD","Cinema Uno FHD","Cinema Uno HD +1","Local SD","A Film SD","A Film HD","Cinema Uno HD H265","Only HEVC HD"};
             for(int n=0;n<titles.length;n++){
-                ContentValues v=new ContentValues();v.put("ident","variant"+n);v.put("title",titles[n]);v.put("grp","Film");v.put("url","https://example.invalid/"+n);v.put("category","Film");v.put("kind",n<6?"TV":"Video");v.put("adult",0);v.put("seen",1);v.put("first_seen",1);
+                ContentValues v=new ContentValues();v.put("ident","variant"+n);v.put("title",titles[n]);v.put("grp","Film");v.put("url","https://example.invalid/"+n);v.put("category","Film");v.put("kind",n<6||n>=8?"TV":"Video");v.put("adult",0);v.put("seen",1);v.put("first_seen",1);
                 store.getWritableDatabase().insertOrThrow("entries",null,v);
             }
             java.util.ArrayList<IptvStore.Media> rows=store.list("Film","",0,75);
@@ -42,7 +42,7 @@ public class Core043Test {
             assertEquals("Cinema Uno HD +1",rows.get(1).title);
             assertEquals("Local SD",rows.get(2).title);
             assertEquals(2,store.searchMedia("Cinema Uno",0,50).size());
-            assertEquals(8,store.count());
+            assertEquals(10,store.count());
         }
     }
     @Test public void xmltvTimezoneAndInvalidDate()throws Exception{
