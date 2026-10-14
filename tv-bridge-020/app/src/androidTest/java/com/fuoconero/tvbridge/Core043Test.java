@@ -45,6 +45,16 @@ public class Core043Test {
             assertEquals(10,store.count());
         }
     }
+    @Test public void unifiedVeezieUsesWorking037Navigator(){
+        Intent original=new Intent().setData(android.net.Uri.parse("fuoconero-tv://item/show_123"))
+            .putExtra("title","Tracker").putExtra("episode",true).putExtra("season","04").putExtra("episode_number","02");
+        Intent delegated=OpenContentActivity.bridge037Intent(original);
+        assertEquals("com.fuoconero.tvbridge.test037",delegated.getComponent().getPackageName());
+        assertEquals("com.fuoconero.tvbridge.OpenContentActivity",delegated.getComponent().getClassName());
+        assertEquals(original.getData(),delegated.getData());assertEquals("Tracker",delegated.getStringExtra("title"));
+        assertTrue(delegated.getBooleanExtra("episode",false));
+        assertEquals("04",delegated.getStringExtra("season"));assertEquals("02",delegated.getStringExtra("episode_number"));
+    }
     @Test public void xmltvTimezoneAndInvalidDate()throws Exception{
         assertEquals(EpgStore.parseTime("20261014120000 +0200"),EpgStore.parseTime("20261014100000 +0000"));
         assertEquals(EpgStore.parseTime("20261014100000"),EpgStore.parseTime("20261014100000 +0000"));

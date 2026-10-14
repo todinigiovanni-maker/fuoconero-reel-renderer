@@ -22,6 +22,23 @@ public class OpenContentActivity extends Activity {
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
         Intent clicked=getIntent();
+        // Use the same navigator as the working Veezie/Trakt 0.3.7 row.
+        // Cancel our own pending request so two accessibility services cannot
+        // drive Veezie at the same time.
+        if(clicked!=null){
+            VeezieNavService.cancel(this);
+            try{
+                startActivity(bridge037Intent(clicked));
+                RecentStore.openedVeezie(this,clicked);
+                getSharedPreferences("veezie_launch",MODE_PRIVATE).edit()
+                    .putString("last_result","APERTURA_TRAMITE_BRIDGE_037")
+                    .putString("last_title",clicked.getStringExtra("title"))
+                    .putLong("last_attempt",System.currentTimeMillis()).apply();
+                finish();return;
+            }catch(android.content.ActivityNotFoundException unavailable){
+                // Preserve standalone operation when the companion is absent.
+            }
+        }
         if(clicked!=null && clicked.getData()!=null &&
             "movie_openveezie".equals(clicked.getData().getLastPathSegment())){
             openVeezie(this);
@@ -75,6 +92,16 @@ public class OpenContentActivity extends Activity {
             .putInt("search_attempts",p.getInt("search_attempts",0)+1)
             .apply();
         finish();
+    }
+
+    static Intent bridge037Intent(Intent clicked){
+        return new Intent(Intent.ACTION_VIEW).setData(clicked.getData())
+            .setComponent(new android.content.ComponentName("com.fuoconero.tvbridge.test037","com.fuoconero.tvbridge.OpenContentActivity"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            .putExtra("title",clicked.getStringExtra("title"))
+            .putExtra("episode",clicked.getBooleanExtra("episode",false))
+            .putExtra("season",clicked.getStringExtra("season"))
+            .putExtra("episode_number",clicked.getStringExtra("episode_number"));
     }
 
     private static boolean searchVeezie(Context ctx,String title) {
