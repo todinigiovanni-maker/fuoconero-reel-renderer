@@ -21,7 +21,7 @@ public final class TvSync {
     public interface Progress { void say(String text); }
     private static final java.util.concurrent.atomic.AtomicBoolean SYNC_BUSY=new java.util.concurrent.atomic.AtomicBoolean(false);
     private static final String PREFS="tvbridge";
-    private static final String CHANNEL_NAME="Fuoconero · Veezie/Trakt 0.3.6 TEST";
+    private static final String CHANNEL_NAME="Fuoconero · Veezie/Trakt 0.3.7 TEST";
     private static class Item {
         String id,title,description,image,imdb;
         boolean episode;
@@ -1037,7 +1037,7 @@ public final class TvSync {
                 poster=Uri.parse(item.importedPosterUri);
             }else{
                 poster=new Uri.Builder().scheme("content")
-                    .authority("com.fuoconero.tvbridge.test036.images")
+                    .authority("com.fuoconero.tvbridge.test037.images")
                     .appendPath("posters").appendPath(imageName)
                     .appendQueryParameter("v",String.valueOf(imageFile.lastModified())).build();
             }
