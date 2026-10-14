@@ -229,6 +229,12 @@ public class VeezieNavService extends AccessibilityService {
             if(stage<=1){
                 AccessibilityNodeInfo close=findLabel(root,new String[]{"chiudi","close"},true,false);
                 if(close!=null&&click(close)){lastAction=now;attempts=0;return;}
+                String[] typeLabels=season.matches("[0-9]{1,3}")?
+                    new String[]{"serie tv","tv series"}:new String[]{"film","movies"};
+                AccessibilityNodeInfo type=findLabel(root,typeLabels,true,false);
+                if(type!=null&&click(type)){
+                    stage=1;lastAction=now;attempts=0;setStatus("Tipo contenuto selezionato");return;
+                }
                 AccessibilityNodeInfo global=findLabel(root,new String[]{"ricerca globale","global search"},true,false);
                 if(global!=null&&click(global)){
                     stage=1;lastAction=now;attempts=0;setStatus("Ricerca globale selezionata");return;
@@ -255,7 +261,7 @@ public class VeezieNavService extends AccessibilityService {
                     }
                 }else{
                     attempts++;
-                    if(attempts>12)finish("Campo ricerca non accessibile; cerca manualmente");
+                    if(attempts>24)finish("Campo ricerca non accessibile; cerca manualmente");
                 }
             }else if(stage==2){
                 AccessibilityNodeInfo result=findExactTitle(root,title);
