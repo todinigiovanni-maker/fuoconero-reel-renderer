@@ -140,6 +140,8 @@ public class IptvActivity extends Activity {
                     "Catalogo pronto: "+count+" contenuti. Premi 5 per la diagnostica.");
             }catch(Exception e){showStatus("Catalogo temporaneamente occupato: attendi la fine dell'importazione e riprova.");}
         });
+        long adultMedia=getIntent().getLongExtra("adult_media_id",-1L);
+        if(adultMedia>=0)unlockAdult(()->openMedia(adultMedia));
         String category=getIntent().getStringExtra("category");
         if(category!=null && !category.isEmpty()){
             if(category.startsWith("Adulti"))unlockAdult(()->showAdultHome());
@@ -542,7 +544,7 @@ public class IptvActivity extends Activity {
         contentArea.removeAllViews();
         currentCategory="";
         label(contentArea,"AREA RISERVATA (PIN)",21,0xffffba92,true);
-        label(contentArea,"Non viene mostrata nella home Projectivy.",15,0xffc8d1df,false);
+        label(contentArea,"Sulla home Projectivy compaiono solo copertine neutre; il PIN protegge la riproduzione.",15,0xffc8d1df,false);
         button(contentArea,"Canali adulti TV",()->showCategory("Adulti TV",0,""));
         button(contentArea,"Video adulti on demand",()->showCategory("Adulti Video",0,""));
         button(contentArea,"Blocca ora",()->{
