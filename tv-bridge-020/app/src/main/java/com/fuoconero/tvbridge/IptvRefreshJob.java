@@ -55,7 +55,6 @@ public class IptvRefreshJob extends JobService {
                     result=store.importPlaylist(ctx,in,progress);
                 }
                 String projectivy=IptvPublisher.publish(ctx);
-                schedule(ctx);
                 return result+"\n"+projectivy;
             }
         }finally{
@@ -121,8 +120,14 @@ public class IptvRefreshJob extends JobService {
         if(!online&&!local)return;
         JobScheduler scheduler=(JobScheduler)ctx.getSystemService(Context.JOB_SCHEDULER_SERVICE);
         if(scheduler==null)return;
+        // Keep an existing periodic job: replacing it resets its execution window.
+        JobInfo pending=scheduler.getPendingJob(JOB_ID);
+        int network=online?JobInfo.NETWORK_TYPE_ANY:JobInfo.NETWORK_TYPE_NONE;
+        if(pending!=null && pending.isPeriodic() && pending.getIntervalMillis()==PERIOD
+            && pending.getFlexMillis()==30L*60*1000
+            && pending.getNetworkType()==network)return;
         JobInfo info=new JobInfo.Builder(JOB_ID,new ComponentName(ctx,IptvRefreshJob.class))
-            .setPeriodic(PERIOD)
+            .setPeriodic(PERIOD,30L*60*1000)
             .setRequiredNetworkType(online?JobInfo.NETWORK_TYPE_ANY:JobInfo.NETWORK_TYPE_NONE)
             .setPersisted(false).build();
         scheduler.schedule(info);
