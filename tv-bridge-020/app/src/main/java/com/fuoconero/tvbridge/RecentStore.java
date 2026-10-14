@@ -153,7 +153,7 @@ public final class RecentStore extends SQLiteOpenHelper {
         try(Cursor cur=c.getContentResolver().query(TvContract.PreviewPrograms.CONTENT_URI,new String[]{"_id","channel_id","internal_provider_id"},null,null,null)){
             if(cur!=null)while(cur.moveToNext())if(cur.getLong(1)==channel)old.put(cur.getString(2),cur.getLong(0));
         }
-        Set<String> retained=new HashSet<>();int order=0;
+        Set<String> retained=new HashSet<>();retained.add(RefreshActionCard.KEY);int order=0;
         for(Entry e:rows){
             String key="fuoconero:"+e.key;
             Intent intent=Intent.parseUri(e.intent,Intent.URI_INTENT_SCHEME);
@@ -188,6 +188,7 @@ public final class RecentStore extends SQLiteOpenHelper {
         }
         for(Map.Entry<String,Long> e:old.entrySet())if(!retained.contains(e.getKey()))
             c.getContentResolver().delete(TvContract.buildPreviewProgramUri(e.getValue()),null,null);
+        RefreshActionCard.publish(c,channel);
     }
 }
 

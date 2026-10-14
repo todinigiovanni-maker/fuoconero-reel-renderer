@@ -2,7 +2,7 @@ package com.fuoconero.tvbridge;
 import android.app.job.*;
 import android.content.*;
 public class HomeRefreshJob extends JobService {
-    private static final java.util.concurrent.atomic.AtomicBoolean BUSY=new java.util.concurrent.atomic.AtomicBoolean(false);
+    static final java.util.concurrent.atomic.AtomicBoolean BUSY=new java.util.concurrent.atomic.AtomicBoolean(false);
     public static void schedule(Context c){
         JobScheduler s=(JobScheduler)c.getSystemService(JOB_SCHEDULER_SERVICE);
         if(s!=null&&s.getPendingJob(4304)==null)s.schedule(new JobInfo.Builder(4304,new ComponentName(c,HomeRefreshJob.class))

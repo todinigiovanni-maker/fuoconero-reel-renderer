@@ -93,7 +93,7 @@ public class BrowseActivity extends Activity {
             long recent=getSharedPreferences("tvbridge",MODE_PRIVATE).getLong("channel_id",-1);
             sections.sort((a,b)->a.id==b.id?0:a.id==recent?-1:b.id==recent?1:a.title.compareTo(b.title));
             // Explicit recent order comes from the local history, not provider row IDs.
-            HashMap<String,Integer> rank=new HashMap<>();
+            HashMap<String,Integer> rank=new HashMap<>();rank.put(RefreshActionCard.KEY,-1);
             try(RecentStore rs=new RecentStore(this)){int n=0;for(RecentStore.Entry e:rs.list(20))rank.put("fuoconero:"+e.key,n++);}
             Section recentSection=channels.get(recent);
             if(recentSection!=null)recentSection.cards.sort(Comparator.comparingInt(c->rank.getOrDefault(c.key,999)));
@@ -123,7 +123,7 @@ public class BrowseActivity extends Activity {
             tile.setBackground(border(false));
             tile.setOnFocusChangeListener((v,selected)->{v.setBackground(border(selected));v.animate().scaleX(selected?1.04f:1).scaleY(selected?1.04f:1).setDuration(100).start();});
             tile.setOnClickListener(v->{try{startActivity(Intent.parseUri(card.intent,Intent.URI_INTENT_SCHEME));}catch(Exception e){status.setText("Contenuto non disponibile");}});
-            if(card.channel==recent)tile.setOnLongClickListener(v->{
+            if(card.channel==recent && !RefreshActionCard.KEY.equals(card.key))tile.setOnLongClickListener(v->{
                 new AlertDialog.Builder(this).setTitle(card.title).setMessage("Rimuovere dalla cronologia di questa versione?")
                     .setPositiveButton("Rimuovi",(d,w)->data.execute(()->{
                         try(RecentStore s=new RecentStore(this)){s.remove(card.key.substring("fuoconero:".length()));}
