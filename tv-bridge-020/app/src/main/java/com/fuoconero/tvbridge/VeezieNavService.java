@@ -424,7 +424,7 @@ public class VeezieNavService extends AccessibilityService {
             AccessibilityNodeInfo n=stack.removeFirst();
             if(n.isVisibleToUser() && (!editable || n.isEditable()) &&
                 "st.veezie".contentEquals(n.getPackageName())){
-                String text=n.getText()==null?"":n.getText().toString().trim().toLowerCase(Locale.ROOT);
+                String text=label(n.getText());
                 String desc=label(n.getContentDescription());
                 String viewId=n.getViewIdResourceName()==null?"":n.getViewIdResourceName().toLowerCase(Locale.ROOT);
                 for(String label:labels){
