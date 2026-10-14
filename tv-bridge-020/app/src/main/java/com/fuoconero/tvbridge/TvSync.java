@@ -913,6 +913,8 @@ public final class TvSync {
         PLAYBACK_WRITER.execute(()->{
             try{
                 long channel=app.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getLong("channel_id",-1);
+                long veezieChannel=app.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getLong("veezie_channel_id",-1);
+                Set<String> matchedIds=new HashSet<>();
                 Item match=null;long row=-1;int matches=0;
                 boolean series=!season.isEmpty() && !episode.isEmpty();
                 try(Cursor cur=app.getContentResolver().query(TvContract.PreviewPrograms.CONTENT_URI,
@@ -921,12 +923,13 @@ public final class TvSync {
                     TvContract.PreviewPrograms.COLUMN_TYPE},null,null,null)){
                     if(cur!=null)while(cur.moveToNext()){
                         String key=cur.getString(2);
-                        if(cur.getLong(1)!=channel || key==null || !key.startsWith("fuoconero:") ||
+                        if((cur.getLong(1)!=channel&&cur.getLong(1)!=veezieChannel) || key==null || !key.startsWith("fuoconero:") ||
                            !playbackTitle(title).equals(playbackTitle(cur.getString(3))))continue;
                         boolean cardSeries=cur.getInt(4)==TvContract.PreviewPrograms.TYPE_TV_EPISODE;
                         if(series!=cardSeries)continue;
                         String id=key.substring("fuoconero:".length());
                         if(!id.matches("(show|movie)_[a-zA-Z0-9_-]{1,80}"))continue;
+                        if(!matchedIds.add(id))continue;
                         matches++;row=cur.getLong(0);
                         match=new Item();match.id=id;match.title=cur.getString(3);match.episode=series;
                     }
@@ -946,6 +949,11 @@ public final class TvSync {
                     .putLong("last_observed",now).apply();
                 RecentStore.veezieProgress(app,match.id,match.title,season,episode,position,duration);
                 RecentStore.publish(app);
+                try(RecentStore history=new RecentStore(app)){
+                    for(RecentStore.Entry entry:history.list(200))if(entry.key.equals(match.id)){
+                        VeeziePublisher.publish(app,Collections.singletonList(entry),false);break;
+                    }
+                }
             }catch(Exception e){android.util.Log.w("FuoconeroTV","Veezie playback update failed",e);}
         });
     }
@@ -1032,9 +1040,10 @@ public final class TvSync {
         try{return java.time.Instant.parse(value).toEpochMilli();}catch(Exception ignored){return 0;}
     }
     private static void updateCards(Context c,long channel,ArrayList<Item> cards,boolean complete)throws Exception {
+        ArrayList<RecentStore.Entry> veezieCards=new ArrayList<>();
         try(RecentStore recents=new RecentStore(c)){
             for(Item item:cards){
-                if(item.recentAt<=0 || "movie_openveezie".equals(item.id))continue;
+                if("movie_openveezie".equals(item.id))continue;
                 String targetSeason=!item.nextSeason.isEmpty()?item.nextSeason:item.progress>=0?item.season:"";
                 String targetEpisode=!item.nextEpisodeNumber.isEmpty()?item.nextEpisodeNumber:item.progress>=0?item.episodeNumber:"";
                 Intent intent=new Intent(c,OpenContentActivity.class).setAction(Intent.ACTION_VIEW)
@@ -1052,10 +1061,12 @@ public final class TvSync {
                 e.art=RecentStore.image(c,item.id+".png");e.intent=intent.toUri(Intent.URI_INTENT_SCHEME);
                 e.source=item.progressSource;e.percent=item.progress;
                 if(item.durationMs>0){e.duration=item.durationMs;e.position=item.positionMs;}
+                veezieCards.add(e);
                 recents.save(e);
             }
         }
         RecentStore.publish(c);
+        VeeziePublisher.publish(c,veezieCards,complete);
     }
     public static void removeChannel(Context c){
         SharedPreferences p=c.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
