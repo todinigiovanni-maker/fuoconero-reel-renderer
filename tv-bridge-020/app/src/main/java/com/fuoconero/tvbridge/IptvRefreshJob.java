@@ -47,7 +47,7 @@ public class IptvRefreshJob extends JobService {
             String savedPath=prefs.getString("source_path","").trim();
             if(remote.isEmpty() && savedUri.isEmpty() && savedPath.isEmpty())
                 throw new IOException("Importa un file M3U da Download o inserisci l'URL della lista.");
-            try(InputStream in=!remote.isEmpty()?openRemote(remote):
+            try(InputStream in=!remote.isEmpty()?downloadPlaylist(ctx,remote,progress):
                 !savedPath.isEmpty()?openLocalFile(ctx,savedPath):
                 ctx.getContentResolver().openInputStream(Uri.parse(savedUri))){
                 if(in==null)throw new IOException("La fonte M3U non e' accessibile.");
@@ -59,11 +59,29 @@ public class IptvRefreshJob extends JobService {
                 return result+"\n"+projectivy;
             }
         }catch(Exception e){
-            ctx.getSharedPreferences(IptvStore.PREFS,Context.MODE_PRIVATE).edit().putString("refresh_error","Lista non aggiornata: controlla rete o sorgente").apply();
+            ctx.getSharedPreferences(IptvStore.PREFS,Context.MODE_PRIVATE).edit().putString("refresh_error","Lista non aggiornata: controlla rete o sorgente").putString("refresh_error_type",e.getClass().getSimpleName()).apply();
             RefreshActionCard.refreshExisting(ctx);throw e;
         }finally{
             UPDATING.set(false);
         }
+    }
+    private static InputStream downloadPlaylist(Context ctx,String url,IptvStore.Progress progress)throws Exception{
+        File cached=File.createTempFile("playlist-refresh-",".m3u",ctx.getCacheDir());
+        try{
+            if(progress!=null)progress.say("Scarico la lista aggiornata...");
+            // Finish the network transfer before slower SQLite work can stall the socket.
+            try(InputStream source=openRemote(url);java.io.FileOutputStream out=new java.io.FileOutputStream(cached)){
+                byte[] buffer=new byte[65536];int n;
+                while((n=source.read(buffer))!=-1){
+                    if(Thread.currentThread().isInterrupted())throw new IOException("Download interrotto");
+                    out.write(buffer,0,n);
+                }
+            }
+            if(progress!=null)progress.say("Confronto la lista con il catalogo...");
+            return new java.io.FilterInputStream(new FileInputStream(cached)){
+                @Override public void close()throws IOException{try{super.close();}finally{cached.delete();}}
+            };
+        }catch(Exception e){cached.delete();throw e;}
     }
     private static InputStream openLocalFile(Context ctx,String path)throws Exception{
         File file=new File(path).getCanonicalFile();
