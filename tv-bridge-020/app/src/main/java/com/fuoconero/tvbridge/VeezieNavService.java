@@ -341,12 +341,26 @@ public class VeezieNavService extends AccessibilityService {
             }else if(stage==5){
                 AccessibilityNodeInfo selected=findNumbered(root,episode,false);
                 if(selected!=null&&click(selected)){
-                    finish("Episodio selezionato: "+title+" S"+season+"E"+episode+
-                        ". Scegli Riproduci o l'host in Veezie.");
+                    stage=6;attempts=0;lastAction=now;
+                    setStatus("Episodio selezionato; attendo il menu Riproduci");
                 }else if(++attempts>20){
                     finish("Stagione aperta; episodio richiesto non individuato");
                 }else{
                     scroll(root,attempts>5);lastAction=now;
+                }
+            }else if(stage==6){
+                AccessibilityNodeInfo prompt=findLabel(root,new String[]{"cosa vuoi fare?","what do you want to do?"},true,false);
+                AccessibilityNodeInfo play=prompt==null?null:findPromptControl(prompt,new String[]{"riproduci","play"});
+                if(play!=null){
+                    finish("Menu Riproduci verificato: "+title+" S"+season+"E"+episode+
+                        ". Scegli Riproduci o l'host in Veezie.");return;
+                }
+                if(++attempts>12){finish("Episodio selezionato, ma menu Riproduci non comparso; premi OK sulla puntata");return;}
+                // A WebView may accept ACTION_CLICK by focusing the card only.
+                // Retry only the exact episode, and never a playback control.
+                if(attempts%3==0 && prompt==null){
+                    AccessibilityNodeInfo selected=findNumbered(root,episode,false);
+                    if(selected!=null&&click(selected))lastAction=now;
                 }
             }
         }catch(Exception e){
@@ -546,3 +560,4 @@ public class VeezieNavService extends AccessibilityService {
         return false;
     }
 }
+
