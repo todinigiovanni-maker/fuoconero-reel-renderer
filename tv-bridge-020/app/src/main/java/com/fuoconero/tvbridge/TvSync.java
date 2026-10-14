@@ -26,6 +26,8 @@ public final class TvSync {
         String id,title,description,image,imdb;
         boolean episode;
         double progress=-1;
+        long positionMs=-1,durationMs=-1;
+        String progressSource="Trakt";
         int runtimeMinutes=0;
         String season="",episodeNumber="",episodeTitle="";
         String nextSeason="",nextEpisodeNumber="",nextEpisodeTitle="";
@@ -415,8 +417,9 @@ public final class TvSync {
         int realPosters=0,progressCards=0,progressWithRuntime=0,progressImages=0,nextPosters=0;
         int seriesBars=0,seriesWithoutProgress=0;
         for(Item item:cards) {
+            applyVeeziePlayback(ctx,item);
             if(imageFor(ctx,item))realPosters++;
-            if(item.progress>0 && item.progress<100){
+            if(item.progress>=0 && item.progress<=100){
                 progressCards++;
                 if(item.runtimeMinutes>0)progressWithRuntime++;
                 if(drawProgressPoster(ctx,item))progressImages++;
@@ -881,8 +884,104 @@ public final class TvSync {
             if(bitmap!=null)bitmap.recycle();
         }
     }
+
+    // Real Veezie player fields only. These observations stay local and never
+    // submit watched/scrobble events or modify Veezie's private data.
+    private static final java.util.concurrent.ExecutorService PLAYBACK_WRITER=
+        java.util.concurrent.Executors.newSingleThreadExecutor();
+    private static String playbackTitle(String s){
+        return s==null?"":s.trim().replaceAll("\\s+"," ").toLowerCase(Locale.ROOT);
+    }
+    private static String playbackClock(long ms){
+        long seconds=Math.max(0,ms/1000L);
+        return seconds>=3600?String.format(Locale.ROOT,"%d:%02d:%02d",seconds/3600,seconds/60%60,seconds%60):
+            String.format(Locale.ROOT,"%02d:%02d",seconds/60,seconds%60);
+    }
+    public static void recordVeeziePlayback(Context ctx,String title,String season,String episode,
+                                           long position,long duration){
+        if(title==null || title.trim().isEmpty() || duration<=0 || position<0 || position>duration)return;
+        final Context app=ctx.getApplicationContext();
+        PLAYBACK_WRITER.execute(()->{
+            try{
+                long channel=app.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getLong("channel_id",-1);
+                Item match=null;long row=-1;int matches=0;
+                boolean series=!season.isEmpty() && !episode.isEmpty();
+                try(Cursor cur=app.getContentResolver().query(TvContract.PreviewPrograms.CONTENT_URI,
+                    new String[]{TvContract.PreviewPrograms._ID,TvContract.PreviewPrograms.COLUMN_CHANNEL_ID,
+                    TvContract.PreviewPrograms.COLUMN_INTERNAL_PROVIDER_ID,TvContract.PreviewPrograms.COLUMN_TITLE,
+                    TvContract.PreviewPrograms.COLUMN_TYPE},null,null,null)){
+                    if(cur!=null)while(cur.moveToNext()){
+                        String key=cur.getString(2);
+                        if(cur.getLong(1)!=channel || key==null || !key.startsWith("fuoconero:") ||
+                           !playbackTitle(title).equals(playbackTitle(cur.getString(3))))continue;
+                        boolean cardSeries=cur.getInt(4)==TvContract.PreviewPrograms.TYPE_TV_EPISODE;
+                        if(series!=cardSeries)continue;
+                        String id=key.substring("fuoconero:".length());
+                        if(!id.matches("(show|movie)_[a-zA-Z0-9_-]{1,80}"))continue;
+                        matches++;row=cur.getLong(0);
+                        match=new Item();match.id=id;match.title=cur.getString(3);match.episode=series;
+                    }
+                }
+                if(matches!=1 || match==null)return; // Ambiguous titles are never guessed.
+                SharedPreferences prefs=app.getSharedPreferences("veezie_playback",Context.MODE_PRIVATE);
+                JSONObject previous=new JSONObject(prefs.getString(match.id,"{}"));
+                long now=System.currentTimeMillis();
+                if(previous.optLong("position",-1)==position && previous.optLong("duration",-1)==duration &&
+                   previous.optString("season","").equals(season) && previous.optString("episode","").equals(episode)
+                   && now-previous.optLong("observed_at",0)<60000L)return;
+                JSONObject data=new JSONObject().put("title",match.title).put("season",season)
+                    .put("episode",episode).put("position",position).put("duration",duration).put("observed_at",now);
+                prefs.edit().putString(match.id,data.toString()).putString("last_title",match.title)
+                    .putString("last_episode",series?"S"+season+"E"+episode:"Film")
+                    .putLong("last_position",position).putLong("last_duration",duration)
+                    .putLong("last_observed",now).apply();
+                applyVeeziePlayback(app,match);
+                if(!drawProgressPoster(app,match))return;
+                File image=new File(new File(app.getFilesDir(),"posters"),match.id+"_progress.png");
+                ContentValues values=new ContentValues();
+                values.put(TvContract.PreviewPrograms.COLUMN_DURATION_MILLIS,duration);
+                values.put(TvContract.PreviewPrograms.COLUMN_LAST_PLAYBACK_POSITION_MILLIS,position);
+                values.put(TvContract.PreviewPrograms.COLUMN_SHORT_DESCRIPTION,match.description);
+                values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_URI,new Uri.Builder().scheme("content")
+                    .authority("com.fuoconero.tvbridge.test037.images").appendPath("posters")
+                    .appendPath(image.getName()).appendQueryParameter("v",String.valueOf(image.lastModified())).build().toString());
+                if(series){
+                    values.put(TvContract.PreviewPrograms.COLUMN_SEASON_DISPLAY_NUMBER,season);
+                    values.put(TvContract.PreviewPrograms.COLUMN_EPISODE_DISPLAY_NUMBER,episode);
+                }
+                Intent intent=new Intent(app,OpenContentActivity.class).setAction(Intent.ACTION_VIEW)
+                    .setData(new Uri.Builder().scheme("fuoconero-tv").authority("item").appendPath(match.id).build())
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("title",match.title).putExtra("episode",series)
+                    .putExtra("season",season).putExtra("episode_number",episode);
+                values.put(TvContract.PreviewPrograms.COLUMN_INTENT_URI,intent.toUri(Intent.URI_INTENT_SCHEME));
+                app.getContentResolver().update(TvContract.buildPreviewProgramUri(row),values,null,null);
+            }catch(Exception e){android.util.Log.w("FuoconeroTV","Veezie playback update failed",e);}
+        });
+    }
+    private static void applyVeeziePlayback(Context ctx,Item item){
+        try{
+            String raw=ctx.getSharedPreferences("veezie_playback",Context.MODE_PRIVATE).getString(item.id,"");
+            if(raw.isEmpty())return;
+            JSONObject p=new JSONObject(raw);
+            long elapsed=System.currentTimeMillis()-p.optLong("observed_at",0);
+            long position=p.optLong("position",-1),duration=p.optLong("duration",-1);
+            String season=p.optString("season",""),episode=p.optString("episode","");
+            if(elapsed<0 || elapsed>30L*24L*60L*60L*1000L || duration<=0 || position<0 || position>duration ||
+               !playbackTitle(item.title).equals(playbackTitle(p.optString("title",""))))return;
+            if(item.episode && (!season.matches("[0-9]{1,3}") || !episode.matches("[0-9]{1,3}")))return;
+            if(!item.episode && (!season.isEmpty() || !episode.isEmpty()))return;
+            item.positionMs=position;item.durationMs=duration;item.progress=100.0*position/duration;
+            item.progressSource="Veezie";item.season=season;item.episodeNumber=episode;
+            // A partial episode resumes that exact episode, rather than Trakt's next episode.
+            item.nextSeason="";item.nextEpisodeNumber="";item.nextEpisodeTitle="";item.nextRuntimeMinutes=0;
+            item.description=(item.episode?String.format(Locale.ITALY,"Riprendi S%02dE%02d · ",
+                Integer.parseInt(season),Integer.parseInt(episode)):"Riprendi film · ")+
+                "Veezie "+playbackClock(position)+" / "+playbackClock(duration);
+        }catch(Exception e){android.util.Log.w("FuoconeroTV","Invalid local playback record",e);}
+    }
+
     private static boolean drawProgressPoster(Context ctx,Item item){
-        if(item.progress<=0 || item.progress>=100)return false;
+        if(item.progress<0 || item.progress>100)return false;
         File folder=new File(ctx.getFilesDir(),"posters");
         File original=new File(folder,item.id+".png");
         File output=new File(folder,item.id+"_progress.png");
@@ -898,13 +997,21 @@ public final class TvSync {
             Canvas canvas=new Canvas(editable);
             Paint bg=new Paint(Paint.ANTI_ALIAS_FLAG);
             bg.setColor(0xDD101828);
-            canvas.drawRect(0,h*0.87f,w,h,bg);
+            canvas.drawRect(0,h*(item.durationMs>0?0.81f:0.87f),w,h,bg);
             Paint text=new Paint(Paint.ANTI_ALIAS_FLAG);
             text.setColor(Color.WHITE);
             text.setTypeface(Typeface.create("sans-serif",Typeface.BOLD));
             text.setTextSize(Math.max(16f,w*0.068f));
             long percent=Math.round(item.progress);
-            canvas.drawText(percent+"% visto",w*0.065f,h*0.93f,text);
+            if(item.durationMs>0){
+                text.setTextSize(Math.max(14f,w*0.052f));
+                String code=item.episode?String.format(Locale.ITALY,"S%02dE%02d",
+                    Integer.parseInt(item.season),Integer.parseInt(item.episodeNumber)):"Film";
+                canvas.drawText(code+" · "+String.format(Locale.ITALY,"%.1f%%",item.progress),
+                    w*0.065f,h*0.865f,text);
+                canvas.drawText(playbackClock(item.positionMs)+" / "+playbackClock(item.durationMs)+" · Veezie",
+                    w*0.065f,h*0.925f,text);
+            }else canvas.drawText(percent+"% visto · Trakt",w*0.065f,h*0.93f,text);
             Paint track=new Paint(Paint.ANTI_ALIAS_FLAG);
             track.setColor(0xFF626977);
             float x=w*0.065f,barTop=h*0.95f,barBottom=h*0.97f,barWidth=w*0.87f;
@@ -1001,8 +1108,8 @@ public final class TvSync {
                     d.append(" · Serie ").append(Math.round(100.0*item.episodesWatched/item.episodesTotal))
                         .append("% (").append(item.episodesWatched).append("/")
                         .append(item.episodesTotal).append(")");
-                if(item.nextRuntimeMinutes>0)d.append(" · ").append(item.nextRuntimeMinutes).append(" min");
-                else if(item.runtimeMinutes>0 && item.episodesRemaining>=0)d.append(" · durata media ").append(item.runtimeMinutes).append(" min");
+                if(item.durationMs<=0 && item.nextRuntimeMinutes>0)d.append(" · ").append(item.nextRuntimeMinutes).append(" min");
+                else if(item.durationMs<=0 && item.runtimeMinutes>0 && item.episodesRemaining>=0)d.append(" · durata media ").append(item.runtimeMinutes).append(" min");
                 item.description=d.toString();
             }
             values.put(TvContract.PreviewPrograms.COLUMN_SHORT_DESCRIPTION,item.description);
@@ -1017,15 +1124,15 @@ public final class TvSync {
                 values.put(TvContract.PreviewPrograms.COLUMN_EPISODE_DISPLAY_NUMBER,item.episodeNumber);
                 values.put(TvContract.PreviewPrograms.COLUMN_EPISODE_TITLE,item.episodeTitle);
             }
-            if(item.progress>=0 && item.runtimeMinutes>0){
-                long total=(long)item.runtimeMinutes*60L*1000L;
+            if(item.progress>=0 && (item.runtimeMinutes>0 || item.durationMs>0)){
+                long total=item.durationMs>0?item.durationMs:(long)item.runtimeMinutes*60L*1000L;
                 values.put(TvContract.PreviewPrograms.COLUMN_DURATION_MILLIS,total);
                 values.put(TvContract.PreviewPrograms.COLUMN_LAST_PLAYBACK_POSITION_MILLIS,
-                    Math.min(total,Math.round(total*item.progress/100.0)));
+                    Math.min(total,item.positionMs>=0?item.positionMs:Math.round(total*item.progress/100.0)));
             }
             values.put(TvContract.PreviewPrograms.COLUMN_WEIGHT,999-i);
             File posterDir=new File(c.getFilesDir(),"posters");
-            boolean hasProgress=item.progress>0 && item.progress<100 &&
+            boolean hasProgress=item.progress>=0 && item.progress<=100 &&
                 new File(posterDir,item.id+"_progress.png").isFile();
             boolean hasNext=!hasProgress && item.episode && item.episodesRemaining>=0 &&
                 new File(posterDir,item.id+"_next.png").isFile();
