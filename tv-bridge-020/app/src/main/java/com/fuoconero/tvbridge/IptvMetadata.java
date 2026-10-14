@@ -60,6 +60,11 @@ public final class IptvMetadata {
             android.util.Log.w("FuoconeroIPTV","Provider metadata unavailable: "+e.getClass().getSimpleName());
         }finally{BUSY.set(false);}
     }
+    public static void refreshNow(Context ctx){
+        if(BUSY.get())return;
+        ctx.getSharedPreferences("iptv_metadata",Context.MODE_PRIVATE).edit().remove("success").remove("attempt").apply();
+        refresh(ctx);
+    }
     private static int read(Context ctx,IptvLibrary library,Uri source,String action,
                             Map<String,Long> movieIds,Set<String> shows,boolean series)throws Exception{
         List<String> path=source.getPathSegments();
@@ -91,7 +96,7 @@ public final class IptvMetadata {
             db.beginTransactionNonExclusive();
             try(JsonReader reader=new JsonReader(new InputStreamReader(limited,"UTF-8"));
                 SQLiteStatement put=db.compileStatement(series?
-                    "INSERT OR REPLACE INTO source_series(series_key,updated_at,artwork) VALUES(?,?,?)":
+                    "INSERT OR REPLACE INTO source_series(series_key,updated_at,artwork) VALUES(?,MAX(?,COALESCE((SELECT updated_at FROM source_series WHERE series_key=?),0)),?)":
                     "INSERT OR REPLACE INTO source_movies(media_id,added_at,artwork) VALUES(?,?,?)")){
                 reader.beginArray();
                 int rows=0;
@@ -127,7 +132,10 @@ public final class IptvMetadata {
                         Long media=movieIds.get(id);if(media==null || media<0)continue;
                         put.bindLong(1,media);
                     }
-                    put.bindLong(2,time);put.bindString(3,image);put.executeInsert();matched++;
+                    put.bindLong(2,time);
+                    if(series){put.bindString(3,name.trim().replaceAll("\\s+"," ").toLowerCase(Locale.ROOT));put.bindString(4,image);}
+                    else put.bindString(3,image);
+                    put.executeInsert();matched++;
                 }
                 reader.endArray();db.setTransactionSuccessful();
             }finally{db.endTransaction();}
