@@ -340,14 +340,19 @@ public class VeezieNavService extends AccessibilityService {
     }
     private static boolean scroll(AccessibilityNodeInfo root,boolean forward){
         ArrayDeque<AccessibilityNodeInfo> stack=new ArrayDeque<>();stack.add(root);int checked=0;
+        java.util.ArrayList<AccessibilityNodeInfo> scrollables=new java.util.ArrayList<>();
         while(!stack.isEmpty()&&checked++<850){
             AccessibilityNodeInfo node=stack.removeFirst();
             if(node.isVisibleToUser()&&node.isScrollable()&&"st.veezie".contentEquals(node.getPackageName())
-                &&node.performAction(forward?AccessibilityNodeInfo.ACTION_SCROLL_FORWARD:
-                    AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD))return true;
+                 )scrollables.add(node);
             for(int i=0;i<node.getChildCount();i++){
                 AccessibilityNodeInfo child=node.getChild(i);if(child!=null)stack.addLast(child);
             }
+        }
+        // Veezie retains its page behind modal lists: prefer the deepest active list.
+        for(int i=scrollables.size()-1;i>=0;i--){
+            if(scrollables.get(i).performAction(forward?AccessibilityNodeInfo.ACTION_SCROLL_FORWARD:
+                AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD))return true;
         }
         return false;
     }
