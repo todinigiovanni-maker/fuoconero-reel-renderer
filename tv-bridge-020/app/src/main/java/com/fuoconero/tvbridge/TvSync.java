@@ -21,11 +21,14 @@ public final class TvSync {
     public interface Progress { void say(String text); }
     private static final java.util.concurrent.atomic.AtomicBoolean SYNC_BUSY=new java.util.concurrent.atomic.AtomicBoolean(false);
     private static final String PREFS="tvbridge";
-    private static final String CHANNEL_NAME="Fuoconero · Veezie/Trakt 0.4.2 TEST";
+    private static final String CHANNEL_NAME="Fuoconero · Veezie/Trakt 0.4.3 TEST";
     private static class Item {
         String id,title,description,image,imdb;
         boolean episode;
         double progress=-1;
+        long positionMs=-1,durationMs=-1;
+        String progressSource="Trakt";
+        long recentAt=0,watchedAt=0;
         int runtimeMinutes=0;
         String season="",episodeNumber="",episodeTitle="";
         String nextSeason="",nextEpisodeNumber="",nextEpisodeTitle="";
@@ -415,8 +418,9 @@ public final class TvSync {
         int realPosters=0,progressCards=0,progressWithRuntime=0,progressImages=0,nextPosters=0;
         int seriesBars=0,seriesWithoutProgress=0;
         for(Item item:cards) {
+            applyVeeziePlayback(ctx,item);
             if(imageFor(ctx,item))realPosters++;
-            if(item.progress>0 && item.progress<100){
+            if(item.progress>=0 && item.progress<=100){
                 progressCards++;
                 if(item.runtimeMinutes>0)progressWithRuntime++;
                 if(drawProgressPoster(ctx,item))progressImages++;
@@ -557,6 +561,8 @@ public final class TvSync {
             String key=(ep?"show_":"movie_")+rawId;
             if(items.containsKey(key))continue;
             Item t=new Item();t.episode=ep;t.id=key;
+            t.recentAt=eventTime(entry.optString(paused?"paused_at":"watched_at",""));
+            t.watchedAt=paused?0:t.recentAt;
             t.title=media.optString("title","Senza titolo");t.imdb=ids.optString("imdb","");
             t.runtimeMinutes=Math.max(0,media.optInt("runtime",0)); // show's average episode runtime is a fallback
             JSONObject episode=entry.optJSONObject("episode");
@@ -600,6 +606,10 @@ public final class TvSync {
             }
             if(item==null)continue;
             JSONObject ep=entry.optJSONObject("episode");
+            long pausedAt=eventTime(entry.optString("paused_at",""));
+            if(episode && ep!=null && item.watchedAt>pausedAt && pausedAt>0 &&
+               item.season.equals(String.valueOf(ep.optInt("season"))) && item.episodeNumber.equals(String.valueOf(ep.optInt("number"))))continue;
+            item.recentAt=Math.max(item.recentAt,pausedAt);
             if(episode && ep!=null){
                 item.season=String.valueOf(ep.optInt("season",0));
                 item.episodeNumber=String.valueOf(ep.optInt("number",0));
@@ -790,7 +800,7 @@ public final class TvSync {
             if(value==null)return false;
             JSONObject cached=new JSONObject(value);
             long age=System.currentTimeMillis()-cached.optLong("cached_at",0);
-            if(age<0||age>=6L*3600L*1000L)return false;
+            if(age<0||age>=6L*3600L*1000L || item.watchedAt>cached.optLong("cached_at",0))return false;
             if(!cached.optString("last_season","").equals(item.season))return false;
             if(!cached.optString("last_episode","").equals(item.episodeNumber))return false;
             applyNextDetails(item,cached.optJSONObject("data"));
@@ -881,8 +891,88 @@ public final class TvSync {
             if(bitmap!=null)bitmap.recycle();
         }
     }
+
+    // Real Veezie player fields only. These observations stay local and never
+    // submit watched/scrobble events or modify Veezie's private data.
+    private static final java.util.concurrent.ExecutorService PLAYBACK_WRITER=
+        java.util.concurrent.Executors.newSingleThreadExecutor();
+    private static String playbackTitle(String s){
+        return s==null?"":s.trim().replaceAll("\\s+"," ").toLowerCase(Locale.ROOT);
+    }
+    private static String playbackClock(long ms){
+        long seconds=Math.max(0,ms/1000L);
+        return seconds>=3600?String.format(Locale.ROOT,"%d:%02d:%02d",seconds/3600,seconds/60%60,seconds%60):
+            String.format(Locale.ROOT,"%02d:%02d",seconds/60,seconds%60);
+    }
+    public static void recordVeeziePlayback(Context ctx,String title,String season,String episode,
+                                           long position,long duration){
+        if(title==null || title.trim().isEmpty() || duration<=0 || position<0 || position>duration)return;
+        final Context app=ctx.getApplicationContext();
+        PLAYBACK_WRITER.execute(()->{
+            try{
+                long channel=app.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getLong("channel_id",-1);
+                Item match=null;long row=-1;int matches=0;
+                boolean series=!season.isEmpty() && !episode.isEmpty();
+                try(Cursor cur=app.getContentResolver().query(TvContract.PreviewPrograms.CONTENT_URI,
+                    new String[]{TvContract.PreviewPrograms._ID,TvContract.PreviewPrograms.COLUMN_CHANNEL_ID,
+                    TvContract.PreviewPrograms.COLUMN_INTERNAL_PROVIDER_ID,TvContract.PreviewPrograms.COLUMN_TITLE,
+                    TvContract.PreviewPrograms.COLUMN_TYPE},null,null,null)){
+                    if(cur!=null)while(cur.moveToNext()){
+                        String key=cur.getString(2);
+                        if(cur.getLong(1)!=channel || key==null || !key.startsWith("fuoconero:") ||
+                           !playbackTitle(title).equals(playbackTitle(cur.getString(3))))continue;
+                        boolean cardSeries=cur.getInt(4)==TvContract.PreviewPrograms.TYPE_TV_EPISODE;
+                        if(series!=cardSeries)continue;
+                        String id=key.substring("fuoconero:".length());
+                        if(!id.matches("(show|movie)_[a-zA-Z0-9_-]{1,80}"))continue;
+                        matches++;row=cur.getLong(0);
+                        match=new Item();match.id=id;match.title=cur.getString(3);match.episode=series;
+                    }
+                }
+                if(matches!=1 || match==null)return; // Ambiguous titles are never guessed.
+                SharedPreferences prefs=app.getSharedPreferences("veezie_playback",Context.MODE_PRIVATE);
+                JSONObject previous=new JSONObject(prefs.getString(match.id,"{}"));
+                long now=System.currentTimeMillis();
+                if(previous.optLong("position",-1)==position && previous.optLong("duration",-1)==duration &&
+                   previous.optString("season","").equals(season) && previous.optString("episode","").equals(episode)
+                   && now-previous.optLong("observed_at",0)<60000L)return;
+                JSONObject data=new JSONObject().put("title",match.title).put("season",season)
+                    .put("episode",episode).put("position",position).put("duration",duration).put("observed_at",now);
+                prefs.edit().putString(match.id,data.toString()).putString("last_title",match.title)
+                    .putString("last_episode",series?"S"+season+"E"+episode:"Film")
+                    .putLong("last_position",position).putLong("last_duration",duration)
+                    .putLong("last_observed",now).apply();
+                RecentStore.veezieProgress(app,match.id,match.title,season,episode,position,duration);
+                RecentStore.publish(app);
+            }catch(Exception e){android.util.Log.w("FuoconeroTV","Veezie playback update failed",e);}
+        });
+    }
+    private static void applyVeeziePlayback(Context ctx,Item item){
+        try{
+            String raw=ctx.getSharedPreferences("veezie_playback",Context.MODE_PRIVATE).getString(item.id,"");
+            if(raw.isEmpty())return;
+            JSONObject p=new JSONObject(raw);
+            long elapsed=System.currentTimeMillis()-p.optLong("observed_at",0);
+            long position=p.optLong("position",-1),duration=p.optLong("duration",-1);
+            String season=p.optString("season",""),episode=p.optString("episode","");
+            if(item.watchedAt>=p.optLong("observed_at",Long.MAX_VALUE) &&
+               item.season.equals(season) && item.episodeNumber.equals(episode))return;
+            if(elapsed<0 || elapsed>30L*24L*60L*60L*1000L || duration<=0 || position<0 || position>duration ||
+               !playbackTitle(item.title).equals(playbackTitle(p.optString("title",""))))return;
+            if(item.episode && (!season.matches("[0-9]{1,3}") || !episode.matches("[0-9]{1,3}")))return;
+            if(!item.episode && (!season.isEmpty() || !episode.isEmpty()))return;
+            item.positionMs=position;item.durationMs=duration;item.progress=100.0*position/duration;
+            item.progressSource="Veezie";item.season=season;item.episodeNumber=episode;
+            // A partial episode resumes that exact episode, rather than Trakt's next episode.
+            item.nextSeason="";item.nextEpisodeNumber="";item.nextEpisodeTitle="";item.nextRuntimeMinutes=0;
+            item.description=(item.episode?String.format(Locale.ITALY,"Riprendi S%02dE%02d · ",
+                Integer.parseInt(season),Integer.parseInt(episode)):"Riprendi film · ")+
+                "Veezie "+playbackClock(position)+" / "+playbackClock(duration);
+        }catch(Exception e){android.util.Log.w("FuoconeroTV","Invalid local playback record",e);}
+    }
+
     private static boolean drawProgressPoster(Context ctx,Item item){
-        if(item.progress<=0 || item.progress>=100)return false;
+        if(item.progress<0 || item.progress>100)return false;
         File folder=new File(ctx.getFilesDir(),"posters");
         File original=new File(folder,item.id+".png");
         File output=new File(folder,item.id+"_progress.png");
@@ -898,13 +988,21 @@ public final class TvSync {
             Canvas canvas=new Canvas(editable);
             Paint bg=new Paint(Paint.ANTI_ALIAS_FLAG);
             bg.setColor(0xDD101828);
-            canvas.drawRect(0,h*0.87f,w,h,bg);
+            canvas.drawRect(0,h*(item.durationMs>0?0.81f:0.87f),w,h,bg);
             Paint text=new Paint(Paint.ANTI_ALIAS_FLAG);
             text.setColor(Color.WHITE);
             text.setTypeface(Typeface.create("sans-serif",Typeface.BOLD));
             text.setTextSize(Math.max(16f,w*0.068f));
             long percent=Math.round(item.progress);
-            canvas.drawText(percent+"% visto",w*0.065f,h*0.93f,text);
+            if(item.durationMs>0){
+                text.setTextSize(Math.max(14f,w*0.052f));
+                String code=item.episode?String.format(Locale.ITALY,"S%02dE%02d",
+                    Integer.parseInt(item.season),Integer.parseInt(item.episodeNumber)):"Film";
+                canvas.drawText(code+" · "+String.format(Locale.ITALY,"%.1f%%",item.progress),
+                    w*0.065f,h*0.865f,text);
+                canvas.drawText(playbackClock(item.positionMs)+" / "+playbackClock(item.durationMs)+" · Veezie",
+                    w*0.065f,h*0.925f,text);
+            }else canvas.drawText(percent+"% visto · Trakt",w*0.065f,h*0.93f,text);
             Paint track=new Paint(Paint.ANTI_ALIAS_FLAG);
             track.setColor(0xFF626977);
             float x=w*0.065f,barTop=h*0.95f,barBottom=h*0.97f,barWidth=w*0.87f;
@@ -927,151 +1025,30 @@ public final class TvSync {
             return false;
         }finally{if(bmp!=null)bmp.recycle();}
     }
-    private static long channel(Context c)throws Exception {
-        SharedPreferences prefs=c.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
-        long old=prefs.getLong("channel_id",-1);
-        if(old>0) {
-            try(Cursor q=c.getContentResolver().query(TvContract.buildChannelUri(old),
-                new String[]{TvContract.Channels._ID},null,null,null)){
-                if(q!=null&&q.moveToFirst())return old;
-            }catch(Exception ignored){}
-        }
-        Intent app=new Intent(c,MainActivity.class);
-        app.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        ContentValues v=new ContentValues();
-        v.put(TvContract.Channels.COLUMN_TYPE,TvContract.Channels.TYPE_PREVIEW);
-        v.put(TvContract.Channels.COLUMN_DISPLAY_NAME,CHANNEL_NAME);
-        v.put(TvContract.Channels.COLUMN_APP_LINK_INTENT_URI,app.toUri(Intent.URI_INTENT_SCHEME));
-        v.put(TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID,"fuoconero-veezie-042");
-        Uri result=c.getContentResolver().insert(TvContract.Channels.CONTENT_URI,v);
-        if(result==null)throw new Exception("Android TV non ha creato il canale.");
-        long id=ContentUris.parseId(result);
-        prefs.edit().putLong("channel_id",id).apply();
-        // Raster channel logo.
-        Bitmap logo=Bitmap.createBitmap(320,180,Bitmap.Config.ARGB_8888);
-        Canvas can=new Canvas(logo);can.drawColor(0xff151929);
-        Paint paint=new Paint(3);paint.setColor(0xfffb803e);paint.setTextSize(33);
-        paint.setTypeface(Typeface.create("sans-serif",Typeface.BOLD));
-        can.drawText("FUOCONERO",35,85,paint);
-        paint.setColor(Color.WHITE);paint.setTextSize(26);
-        can.drawText("TV BRIDGE",45,125,paint);
-        try(OutputStream os=c.getContentResolver().openOutputStream(TvContract.buildChannelLogoUri(id))){
-            if(os!=null)logo.compress(Bitmap.CompressFormat.PNG,90,os);
-        }catch(Exception ignored){}
-        logo.recycle();
-        return id;
+    private static long channel(Context c)throws Exception {return RecentStore.channel(c);}
+    private static long eventTime(String value){
+        try{return java.time.Instant.parse(value).toEpochMilli();}catch(Exception ignored){return 0;}
     }
     private static void updateCards(Context c,long channel,ArrayList<Item> cards,boolean complete)throws Exception {
-        Map<String,Long> existing=new HashMap<>();
-        ArrayList<Long> duplicates=new ArrayList<>();
-        // Android TV explicitly forbids SQL selections for PreviewPrograms.
-        try(Cursor cur=c.getContentResolver().query(TvContract.PreviewPrograms.CONTENT_URI,
-                new String[]{TvContract.PreviewPrograms._ID,
-                TvContract.PreviewPrograms.COLUMN_CHANNEL_ID,
-                TvContract.PreviewPrograms.COLUMN_INTERNAL_PROVIDER_ID},null,null,null)){
-            if(cur!=null){
-                while(cur.moveToNext()){
-                    if(cur.getLong(1)!=channel)continue;
-                    String key=cur.getString(2);long id=cur.getLong(0);
-                    if(key==null||!key.startsWith("fuoconero:"))continue;
-                    if(existing.containsKey(key)) duplicates.add(id);
-                    else existing.put(key,id);
-                }
+        try(RecentStore recents=new RecentStore(c)){
+            for(Item item:cards){
+                if(item.recentAt<=0 || "movie_openveezie".equals(item.id))continue;
+                String targetSeason=!item.nextSeason.isEmpty()?item.nextSeason:item.progress>=0?item.season:"";
+                String targetEpisode=!item.nextEpisodeNumber.isEmpty()?item.nextEpisodeNumber:item.progress>=0?item.episodeNumber:"";
+                Intent intent=new Intent(c,OpenContentActivity.class).setAction(Intent.ACTION_VIEW)
+                    .setData(new Uri.Builder().scheme("fuoconero-tv").authority("item").appendPath(item.id).build())
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("title",item.title).putExtra("episode",item.episode)
+                    .putExtra("season",targetSeason)
+                    .putExtra("episode_number",targetEpisode);
+                RecentStore.Entry e=new RecentStore.Entry();e.key=item.id;e.title=item.title;e.at=item.recentAt;
+                e.description=!item.nextSeason.isEmpty()?"Prossima S"+item.nextSeason+"E"+item.nextEpisodeNumber+" · "+item.nextEpisodeTitle:item.description;
+                e.art=RecentStore.image(c,item.id+".png");e.intent=intent.toUri(Intent.URI_INTENT_SCHEME);
+                e.source=item.progressSource;e.percent=item.progress;
+                if(item.durationMs>0){e.duration=item.durationMs;e.position=item.positionMs;}
+                recents.save(e);
             }
         }
-        Set<String> retained=new HashSet<>();
-        for(int i=0;i<cards.size();i++){
-            Item item=cards.get(i);
-            String key="fuoconero:"+item.id;
-            retained.add(key);
-            ContentValues values=new ContentValues();
-            values.put(TvContract.PreviewPrograms.COLUMN_CHANNEL_ID,channel);
-            values.put(TvContract.PreviewPrograms.COLUMN_TYPE,item.episode?
-                TvContract.PreviewPrograms.TYPE_TV_EPISODE:TvContract.PreviewPrograms.TYPE_MOVIE);
-            values.put(TvContract.PreviewPrograms.COLUMN_TITLE,item.title);
-            if(item.episode){
-                StringBuilder d=new StringBuilder(item.description);
-                if(!item.nextSeason.isEmpty()){
-                    d.setLength(0);
-                    d.append("Prossima S").append(item.nextSeason).append("E").append(item.nextEpisodeNumber);
-                    if(!item.nextEpisodeTitle.isEmpty())d.append(" · ").append(item.nextEpisodeTitle);
-                }
-                if(item.episodesRemaining>=0)d.append(" · ").append(item.episodesRemaining).append(" episodi rimanenti");
-                if(item.episodesTotal>0 && item.episodesWatched>=0)
-                    d.append(" · Serie ").append(Math.round(100.0*item.episodesWatched/item.episodesTotal))
-                        .append("% (").append(item.episodesWatched).append("/")
-                        .append(item.episodesTotal).append(")");
-                if(item.nextRuntimeMinutes>0)d.append(" · ").append(item.nextRuntimeMinutes).append(" min");
-                else if(item.runtimeMinutes>0 && item.episodesRemaining>=0)d.append(" · durata media ").append(item.runtimeMinutes).append(" min");
-                item.description=d.toString();
-            }
-            values.put(TvContract.PreviewPrograms.COLUMN_SHORT_DESCRIPTION,item.description);
-            values.put(TvContract.PreviewPrograms.COLUMN_INTERNAL_PROVIDER_ID,key);
-            values.put(TvContract.PreviewPrograms.COLUMN_CONTENT_ID,"trakt:"+item.id);
-            if(item.episode && !item.nextSeason.isEmpty()){
-                values.put(TvContract.PreviewPrograms.COLUMN_SEASON_DISPLAY_NUMBER,item.nextSeason);
-                values.put(TvContract.PreviewPrograms.COLUMN_EPISODE_DISPLAY_NUMBER,item.nextEpisodeNumber);
-                values.put(TvContract.PreviewPrograms.COLUMN_EPISODE_TITLE,item.nextEpisodeTitle);
-            }else if(item.episode && !item.season.isEmpty()){
-                values.put(TvContract.PreviewPrograms.COLUMN_SEASON_DISPLAY_NUMBER,item.season);
-                values.put(TvContract.PreviewPrograms.COLUMN_EPISODE_DISPLAY_NUMBER,item.episodeNumber);
-                values.put(TvContract.PreviewPrograms.COLUMN_EPISODE_TITLE,item.episodeTitle);
-            }
-            if(item.progress>=0 && item.runtimeMinutes>0){
-                long total=(long)item.runtimeMinutes*60L*1000L;
-                values.put(TvContract.PreviewPrograms.COLUMN_DURATION_MILLIS,total);
-                values.put(TvContract.PreviewPrograms.COLUMN_LAST_PLAYBACK_POSITION_MILLIS,
-                    Math.min(total,Math.round(total*item.progress/100.0)));
-            }
-            values.put(TvContract.PreviewPrograms.COLUMN_WEIGHT,999-i);
-            File posterDir=new File(c.getFilesDir(),"posters");
-            boolean hasProgress=item.progress>0 && item.progress<100 &&
-                new File(posterDir,item.id+"_progress.png").isFile();
-            boolean hasNext=!hasProgress && item.episode && item.episodesRemaining>=0 &&
-                new File(posterDir,item.id+"_next.png").isFile();
-            String imageName=item.id+(hasProgress?"_progress":hasNext?"_next":"")+".png";
-            File imageFile=new File(posterDir,imageName);
-            // Changed URI when a poster is regenerated so launcher image caches refresh.
-            Uri poster;
-            if(!imageFile.isFile() && !item.importedPosterUri.isEmpty()){
-                poster=Uri.parse(item.importedPosterUri);
-            }else{
-                poster=new Uri.Builder().scheme("content")
-                    .authority("com.fuoconero.tvbridge.test042.images")
-                    .appendPath("posters").appendPath(imageName)
-                    .appendQueryParameter("v",String.valueOf(imageFile.lastModified())).build();
-            }
-            values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_URI,poster.toString());
-            values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_ASPECT_RATIO,TvContract.PreviewPrograms.ASPECT_RATIO_2_3);
-            Intent intent=new Intent(c,OpenContentActivity.class);
-            intent.setAction(Intent.ACTION_VIEW);
-            intent.setData(new Uri.Builder().scheme("fuoconero-tv").authority("item")
-                .appendPath(item.id).build());
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            intent.putExtra("title",item.title);
-            intent.putExtra("episode",item.episode);
-            intent.putExtra("season",!item.nextSeason.isEmpty()?item.nextSeason:item.season);
-            intent.putExtra("episode_number",!item.nextEpisodeNumber.isEmpty()?item.nextEpisodeNumber:item.episodeNumber);
-            values.put(TvContract.PreviewPrograms.COLUMN_INTENT_URI,intent.toUri(Intent.URI_INTENT_SCHEME));
-            Long old=existing.get(key);
-            if(old!=null){
-                // COLUMN_CHANNEL_ID is immutable, omit for update.
-                values.remove(TvContract.PreviewPrograms.COLUMN_CHANNEL_ID);
-                c.getContentResolver().update(TvContract.buildPreviewProgramUri(old),values,null,null);
-            }else{
-                if(c.getContentResolver().insert(TvContract.PreviewPrograms.CONTENT_URI,values)==null)
-                    throw new Exception("Inserimento locandina fallito: "+item.title);
-            }
-        }
-        for(Map.Entry<String,Long> old:existing.entrySet()){
-            // The temporary Veezie shortcut should vanish as soon as actual
-            // content cards exist, including when Trakt enrichment is partial.
-            boolean starter="fuoconero:movie_openveezie".equals(old.getKey())
-                && cards.size()>0 && !retained.contains(old.getKey());
-            if(starter || (complete && !retained.contains(old.getKey())))
-                c.getContentResolver().delete(TvContract.buildPreviewProgramUri(old.getValue()),null,null);
-        }
-        for(long id:duplicates)c.getContentResolver().delete(TvContract.buildPreviewProgramUri(id),null,null);
+        RecentStore.publish(c);
     }
     public static void removeChannel(Context c){
         SharedPreferences p=c.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
@@ -1080,3 +1057,4 @@ public final class TvSync {
         p.edit().remove("channel_id").apply();
     }
 }
+

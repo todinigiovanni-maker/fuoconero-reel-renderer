@@ -20,9 +20,10 @@ import java.util.regex.Pattern;
 
 /** Private, on-device index for large user-provided M3U files. Never uploads a stream URL. */
 public final class IptvStore extends SQLiteOpenHelper {
+    private static final Pattern TVG_ID=Pattern.compile("(?:^|\\s)tvg-id=\"([^\"]*)\"");
     public interface Progress { void say(String message); }
     public static final String PREFS="iptv_settings";
-    public static final String[] PUBLIC_GROUPS={"TV Italia","Sport","Documentari","Film","Serie"};
+    public static final String[] PUBLIC_GROUPS={"Continua","Ultimi film","Ultime serie","TV Italia","Sport","DAZN","Documentari","Film","Serie","Adulti TV"};
     public static final class Media {
         public long id;
         public String title,category,group,url,kind;
@@ -31,15 +32,32 @@ public final class IptvStore extends SQLiteOpenHelper {
     private static final Pattern GROUP=Pattern.compile("(?:^|\\s)group-title=\"([^\"]*)\"");
     private static final Pattern NAME=Pattern.compile("(?:^|\\s)tvg-name=\"([^\"]*)\"");
     private final Context app;
-    public IptvStore(Context c){super(c,"fuoconero_iptv.db",null,1);app=c.getApplicationContext();}
+    public IptvStore(Context c){
+        super(c,"fuoconero_iptv.db",null,2);
+        app=c.getApplicationContext();
+        // Readers must be able to inspect the catalog while a large M3U is indexing.
+        setWriteAheadLoggingEnabled(true);
+    }
+    @Override public void onConfigure(SQLiteDatabase db){
+        super.onConfigure(db);
+        // Android SQLiteDatabase.execSQL rejects PRAGMA busy_timeout as a query.
+        // Rely on the connection busy handler supplied by Android instead.
+    }
     @Override public void onCreate(SQLiteDatabase db){
-        db.execSQL("CREATE TABLE entries(id INTEGER PRIMARY KEY AUTOINCREMENT, ident TEXT NOT NULL UNIQUE, title TEXT NOT NULL, grp TEXT NOT NULL, url TEXT NOT NULL, category TEXT NOT NULL, kind TEXT NOT NULL, adult INTEGER NOT NULL, seen INTEGER NOT NULL, first_seen INTEGER NOT NULL, fav INTEGER NOT NULL DEFAULT 0)");
+        db.execSQL("CREATE TABLE entries(id INTEGER PRIMARY KEY AUTOINCREMENT, ident TEXT NOT NULL UNIQUE, title TEXT NOT NULL, grp TEXT NOT NULL, url TEXT NOT NULL, category TEXT NOT NULL, kind TEXT NOT NULL, adult INTEGER NOT NULL, seen INTEGER NOT NULL, first_seen INTEGER NOT NULL, fav INTEGER NOT NULL DEFAULT 0, tvg_id TEXT NOT NULL DEFAULT '')");
         db.execSQL("CREATE INDEX idx_iptv_cat ON entries(category,adult,id)");
         db.execSQL("CREATE INDEX idx_iptv_title ON entries(title)");
         db.execSQL("CREATE INDEX idx_iptv_new ON entries(first_seen)");
         db.execSQL("CREATE INDEX idx_iptv_fav ON entries(fav,adult,id)");
     }
-    @Override public void onUpgrade(SQLiteDatabase db,int oldV,int newV){}
+    @Override public void onUpgrade(SQLiteDatabase db,int oldV,int newV){
+        if(oldV<2)db.execSQL("ALTER TABLE entries ADD COLUMN tvg_id TEXT NOT NULL DEFAULT ''");
+    }
+    public String epgId(long id){
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT tvg_id FROM entries WHERE id=?",new String[]{String.valueOf(id)})){
+            return c.moveToFirst()?c.getString(0):"";
+        }
+    }
     private static String attr(Pattern p,String info){
         Matcher m=p.matcher(info);
         return m.find()?m.group(1).trim():"";
@@ -96,9 +114,9 @@ public final class IptvStore extends SQLiteOpenHelper {
         long prev=prefs.getLong("successful_imports",0);
         // Reusing the existing row ID keeps Projectivy Intent IDs and favorites
         // stable across a refresh of the very same playlist.
-        String sql="INSERT OR REPLACE INTO entries(id,ident,title,grp,url,category,kind,adult,seen,first_seen,fav) "+
-            "VALUES((SELECT id FROM entries WHERE ident=?),?,?,?,?,?,?,?,?,COALESCE((SELECT first_seen FROM entries WHERE ident=?),?),COALESCE((SELECT fav FROM entries WHERE ident=?),0))";
-        db.beginTransaction();
+        String sql="INSERT OR REPLACE INTO entries(id,ident,title,grp,url,category,kind,adult,seen,first_seen,fav,tvg_id) "+
+            "VALUES((SELECT id FROM entries WHERE ident=?),?,?,?,?,?,?,?,?,COALESCE((SELECT first_seen FROM entries WHERE ident=?),?),COALESCE((SELECT fav FROM entries WHERE ident=?),0),?)";
+        db.beginTransactionNonExclusive();
         try(BufferedReader reader=new BufferedReader(new InputStreamReader(input,StandardCharsets.UTF_8),65536)){
             SQLiteStatement put=db.compileStatement(sql);
             String line,info=null;
@@ -134,6 +152,7 @@ public final class IptvStore extends SQLiteOpenHelper {
                     put.bindString(10,ident);
                     put.bindLong(11,now);
                     put.bindString(12,ident);
+                    put.bindString(13,clean(attr(TVG_ID,info),200));
                     put.executeInsert();
                     count++;
                     info=null;
@@ -167,7 +186,119 @@ public final class IptvStore extends SQLiteOpenHelper {
             return c.moveToFirst()?c.getLong(0):0;
         }
     }
+    /**
+     * Live television: show only an explicitly labelled HD/FHD/UHD variant,
+     * one per named channel. SD, catch-up +1/+2/+3 and repeated providers
+     * never take a second slot in Projectivy or in the TV catalog.
+     *
+     * This only changes the presentation, never deletes original M3U rows.
+     */
+    private static final java.util.regex.Pattern HD_QUALITY=java.util.regex.Pattern.compile(
+        "(?i)\\b(?:FULL\\s*HD|FHD|HD|UHD|4K|720P|1080P|2160P|HDR)\\b");
+    private static final java.util.regex.Pattern REMOVE_QUALITY=java.util.regex.Pattern.compile(
+        "(?i)\\b(?:FULL\\s*HD|FHD|HD|UHD|4K|SD|RAW|HEVC|H\\.?265|H\\.?264|HDR|720P|1080P|2160P)\\b");
+    private static boolean liveCategory(String category){
+        return "TV Italia".equals(category)||"Sport".equals(category)||"DAZN".equals(category);
+    }
+    private static String canonicalLiveName(String original){
+        String t=original.toUpperCase(Locale.ROOT);
+        t=REMOVE_QUALITY.matcher(t).replaceAll(" ");
+        t=t.replaceAll("\\+\\s*[123]\\b"," ");
+        t=t.replaceAll("[^A-Z0-9 ]"," ").replaceAll("\\s+"," ").trim();
+        // DAZN 1 - SERIE B - ASCOLI is a temporary alternate feed, not a
+        // separate permanent channel DAZN 1. Preserve DAZN 10 versus DAZN 1.
+        java.util.regex.Matcher special=java.util.regex.Pattern.compile(
+            "^DAZN\\s+(\\d{1,2})(?:\\s+.*)?$").matcher(t);
+        if(special.matches())return "DAZN "+Integer.parseInt(special.group(1));
+        return t;
+    }
+    private static int qualityScore(String title,String key){
+        String u=title.toUpperCase(Locale.ROOT);
+        if(!HD_QUALITY.matcher(u).find())return -1; // no SD or unknown resolution
+        int score=0;
+        if(u.matches(".*\\bHD\\b.*")&&!u.matches(".*\\bFULL\\s*HD\\b.*"))score=600;
+        else if(u.matches(".*\\b(?:FHD|FULL\\s*HD|1080P)\\b.*"))score=550;
+        else if(u.matches(".*\\b(?:UHD|4K|2160P)\\b.*"))score=500;
+        else score=450;
+        if(u.matches(".*\\+\\s*[123]\\b.*"))score-=220;
+        if(u.matches(".*\\b(?:H265|HEVC|H\\.265)\\b.*"))score-=15;
+        String cleaned=REMOVE_QUALITY.matcher(u).replaceAll(" ")
+            .replaceAll("\\+\\s*[123]\\b"," ")
+            .replaceAll("[^A-Z0-9 ]"," ").replaceAll("\\s+"," ").trim();
+        if(cleaned.equals(key))score+=130; // prefer main named channel
+        return score;
+    }
+    private static int priority(String name,String category){
+        if("TV Italia".equals(category)){
+            if(name.matches("RAI 1"))return 0;
+            if(name.matches("RAI 2"))return 1;
+            if(name.matches("RAI 3"))return 2;
+            if(name.matches("RETE 4"))return 3;
+            if(name.matches("CANALE 5"))return 4;
+            if(name.matches("ITALIA 1"))return 5;
+            if(name.matches("LA 7|LA7"))return 6;
+            if(name.matches("NOVE|DISCOVERY NOVE"))return 7;
+        }
+        if(name.matches("DAZN [0-9]{1,2}"))
+            return Integer.parseInt(name.substring(5));
+        if(name.equals("SKY SPORT UNO"))return 30;
+        if(name.equals("SKY SPORT CALCIO"))return 31;
+        return 1000;
+    }
+    private ArrayList<Media> uniqueHdLive(String category,String search,int offset,int limit){
+        java.util.LinkedHashMap<String,Media> selected=new java.util.LinkedHashMap<>();
+        java.util.HashMap<String,Integer> bestScores=new java.util.HashMap<>();
+        String sql="SELECT id,title,grp,url,category,kind,adult,fav FROM entries "+
+            "WHERE category IN ('TV Italia','Sport') AND kind='TV' AND adult=0 "+
+            "AND title NOT LIKE '---%' ORDER BY id ASC";
+        try(Cursor c=getReadableDatabase().rawQuery(sql,null)){
+            while(c.moveToNext()){
+                Media m=new Media();
+                m.id=c.getLong(0);m.title=c.getString(1);m.group=c.getString(2);
+                m.url=c.getString(3);m.category=c.getString(4);
+                m.kind=c.getString(5);m.adult=false;m.fav=c.getInt(7)!=0;
+                if(!"DAZN".equals(category)&&!category.equals(m.category))continue;
+                if("DAZN".equals(category)&&!m.title.toUpperCase(Locale.ROOT).startsWith("DAZN"))continue;
+                String key=canonicalLiveName(m.title);
+                if(key.length()<2)continue;
+                if("DAZN".equals(category)&&key.contains(" ")){
+                    // Keep permanent channels, not matches and team-specific event aliases.
+                    if(!key.matches("DAZN (?:[0-9]{1,2}|CHANNEL|SPORT SERIE A [0-9]{1,2})"))
+                        continue;
+                }
+                int score=qualityScore(m.title,key);
+                if(score<0)continue;
+                Integer old=bestScores.get(key);
+                if(old==null||score>old){
+                    bestScores.put(key,score);
+                    selected.put(key,m);
+                }
+            }
+        }
+        java.util.ArrayList<java.util.Map.Entry<String,Media>> sorted=
+            new java.util.ArrayList<>(selected.entrySet());
+        sorted.sort((a,b)->{
+            int x=priority(a.getKey(),category),y=priority(b.getKey(),category);
+            if(x!=y)return Integer.compare(x,y);
+            return a.getKey().compareTo(b.getKey());
+        });
+        String filter=search==null?"":search.trim().toLowerCase(Locale.ROOT);
+        ArrayList<Media> result=new ArrayList<>();
+        int skip=Math.max(0,offset),cap=Math.min(75,Math.max(1,limit));
+        for(java.util.Map.Entry<String,Media> e:sorted){
+            Media m=e.getValue();
+            if(!filter.isEmpty()&&!m.title.toLowerCase(Locale.ROOT).contains(filter)&&
+                !e.getKey().toLowerCase(Locale.ROOT).contains(filter)&&
+                !m.group.toLowerCase(Locale.ROOT).contains(filter))continue;
+            if(skip-->0)continue;
+            result.add(m);
+            if(result.size()>=cap)break;
+        }
+        return result;
+    }
+
     public ArrayList<Media> list(String category,String search,int offset,int limit){
+        if(liveCategory(category))return uniqueHdLive(category,search,offset,limit);
         ArrayList<Media> result=new ArrayList<>();
         ArrayList<String> args=new ArrayList<>();
         StringBuilder query=new StringBuilder("SELECT id,title,grp,url,category,kind,adult,fav FROM entries WHERE ");
@@ -176,6 +307,10 @@ public final class IptvStore extends SQLiteOpenHelper {
             query.append("adult=0 AND first_seen>=?");
             args.add(String.valueOf(app.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
                 .getLong("new_from",Long.MAX_VALUE)));
+        }
+        else if("DAZN".equals(category)){
+            query.append("category='Sport' AND adult=0 AND (title LIKE ? OR grp LIKE ?)");
+            args.add("%DAZN%");args.add("%DAZN%");
         }
         else if("Adulti".equals(category))query.append("adult=1");
         else if("Adulti TV".equals(category))query.append("adult=1 AND kind='TV'");
@@ -187,6 +322,8 @@ public final class IptvStore extends SQLiteOpenHelper {
             String safe=search.trim().replace("\\","\\\\").replace("%","\\%").replace("_","\\_");
             args.add("%"+safe+"%");args.add("%"+safe+"%");
         }
+        // Distinguish real TV channels from VOD; never surface category headers.
+        query.append(" AND title NOT LIKE '---%' AND title NOT LIKE '-- %'");
         query.append(" ORDER BY id ASC LIMIT ? OFFSET ?");
         args.add(String.valueOf(Math.min(75,Math.max(1,limit))));
         args.add(String.valueOf(Math.max(0,offset)));
@@ -201,6 +338,28 @@ public final class IptvStore extends SQLiteOpenHelper {
         }
         return result;
     }
+
+    /** Public title search: series episodes are grouped by IptvLibrary instead. */
+    public ArrayList<Media> searchMedia(String term,int offset,int limit){
+        ArrayList<Media> result=new ArrayList<>();
+        String safe=term.trim().replace("\\","\\\\").replace("%","\\%").replace("_","\\_");
+        try(Cursor c=getReadableDatabase().rawQuery(
+            "SELECT id,title,grp,url,category,kind,adult,fav FROM entries "+
+            "WHERE adult=0 AND NOT(category='Serie' AND kind='Video') "+
+            "AND title NOT LIKE '---%' AND title NOT LIKE '-- %' "+
+            "AND title LIKE ? ESCAPE '\\' "+
+            "ORDER BY CASE WHEN lower(title)=lower(?) THEN 0 ELSE 1 END,title COLLATE NOCASE,id "+
+            "LIMIT ? OFFSET ?",new String[]{"%"+safe+"%",term.trim(),
+                String.valueOf(Math.min(50,Math.max(1,limit))),String.valueOf(Math.max(0,offset))})){
+            while(c.moveToNext()){
+                Media m=new Media();m.id=c.getLong(0);m.title=c.getString(1);m.group=c.getString(2);
+                m.url=c.getString(3);m.category=c.getString(4);m.kind=c.getString(5);
+                m.adult=false;m.fav=c.getInt(7)!=0;result.add(m);
+            }
+        }
+        return result;
+    }
+
     public Media find(long id){
         try(Cursor c=getReadableDatabase().rawQuery("SELECT id,title,grp,url,category,kind,adult,fav FROM entries WHERE id=?",
             new String[]{String.valueOf(id)})){
@@ -215,3 +374,4 @@ public final class IptvStore extends SQLiteOpenHelper {
         getWritableDatabase().execSQL("UPDATE entries SET fav=1-fav WHERE id=?",new Object[]{id});
     }
 }
+

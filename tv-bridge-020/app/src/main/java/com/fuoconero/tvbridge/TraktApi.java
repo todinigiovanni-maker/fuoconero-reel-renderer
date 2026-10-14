@@ -35,7 +35,7 @@ public final class TraktApi {
             return new ApiError(429, "Trakt HTTP 429 (limite richieste / Cloudflare 1015). Attendi circa "+
                 ((wait+59999L)/60000L)+" min prima di riprovare. Nessuna scheda esistente è stata cancellata.");
         }
-        return new ApiError(status,"Trakt HTTP "+status+" "+response.substring(0,Math.min(response.length(),200)));
+        return new ApiError(status,"Trakt HTTP "+status);
     }
     private final String clientId,clientSecret;
     public interface Progress {void say(String text);}
@@ -92,6 +92,8 @@ public final class TraktApi {
         if(token.isEmpty())throw new Exception("Trakt non collegato: usa la voce 1.");
         long expire=p.getLong("expires_at",0);
         if(expire>0 && System.currentTimeMillis()+60000>expire) {
+            if(p.getBoolean("imported_readonly",false))
+                throw new Exception("Sessione importata scaduta; la versione stabile rimane collegata. Collega questa versione test per un rinnovo indipendente.");
             String refresh=p.getString("refresh_token","");
             if(refresh.isEmpty())throw new Exception("Token scaduto: ricollega Trakt.");
             JSONObject data=new JSONObject(); data.put("grant_type","refresh_token");
@@ -108,6 +110,7 @@ public final class TraktApi {
         if(access.isEmpty())throw new Exception("Risposta Trakt priva di access_token");
         long seconds=token.optLong("expires_in",604800);
         p.edit().putString("access_token",access)
+            .putBoolean("imported_readonly",false)
             .putString("refresh_token",token.optString("refresh_token",p.getString("refresh_token","")))
             .putLong("expires_at",System.currentTimeMillis()+seconds*1000L).apply();
     }
@@ -169,3 +172,4 @@ public final class TraktApi {
         ApiError(int code,String msg){super(msg);this.code=code;}
     }
 }
+

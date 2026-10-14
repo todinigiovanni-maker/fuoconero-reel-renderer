@@ -21,6 +21,10 @@ import java.net.URL;
 public class IptvRefreshJob extends JobService {
     static final int JOB_ID=4080;
     static final long PERIOD=12L*60*60*1000;
+    static final long FLEX=Math.max(JobInfo.getMinFlexMillis(),Math.max(30L*60*1000,PERIOD/20));
+    private static final java.util.concurrent.atomic.AtomicBoolean UPDATING=
+        new java.util.concurrent.atomic.AtomicBoolean(false);
+    public static boolean isUpdating(){return UPDATING.get();}
     @Override public boolean onStartJob(JobParameters params){
         new Thread(()->{
             try{
@@ -34,20 +38,28 @@ public class IptvRefreshJob extends JobService {
     @Override public boolean onStopJob(JobParameters params){return true;}
 
     public static String update(Context ctx,IptvStore.Progress progress)throws Exception{
-        SharedPreferences prefs=ctx.getSharedPreferences(IptvStore.PREFS,Context.MODE_PRIVATE);
-        String remote=prefs.getString("source_url","").trim();
-        String savedUri=prefs.getString("source_uri","").trim();
-        String savedPath=prefs.getString("source_path","").trim();
-        if(remote.isEmpty() && savedUri.isEmpty() && savedPath.isEmpty())
-            throw new IOException("Importa un file M3U da Download o inserisci l'URL della lista.");
-        try(InputStream in=!remote.isEmpty()?openRemote(remote):
-            !savedPath.isEmpty()?openLocalFile(ctx,savedPath):
-            ctx.getContentResolver().openInputStream(Uri.parse(savedUri))){
-            if(in==null)throw new IOException("La fonte M3U non e' accessibile.");
-            String result=new IptvStore(ctx).importPlaylist(ctx,in,progress);
-            String projectivy=IptvPublisher.publish(ctx);
-            schedule(ctx);
-            return result+"\n"+projectivy;
+        if(!UPDATING.compareAndSet(false,true))
+            throw new IOException("Importazione gia' in corso. Attendi la fine prima di aggiornare di nuovo.");
+        try{
+            SharedPreferences prefs=ctx.getSharedPreferences(IptvStore.PREFS,Context.MODE_PRIVATE);
+            String remote=prefs.getString("source_url","").trim();
+            String savedUri=prefs.getString("source_uri","").trim();
+            String savedPath=prefs.getString("source_path","").trim();
+            if(remote.isEmpty() && savedUri.isEmpty() && savedPath.isEmpty())
+                throw new IOException("Importa un file M3U da Download o inserisci l'URL della lista.");
+            try(InputStream in=!remote.isEmpty()?openRemote(remote):
+                !savedPath.isEmpty()?openLocalFile(ctx,savedPath):
+                ctx.getContentResolver().openInputStream(Uri.parse(savedUri))){
+                if(in==null)throw new IOException("La fonte M3U non e' accessibile.");
+                String result;
+                try(IptvStore store=new IptvStore(ctx)){
+                    result=store.importPlaylist(ctx,in,progress);
+                }
+                String projectivy=IptvPublisher.publish(ctx);
+                return result+"\n"+projectivy;
+            }
+        }finally{
+            UPDATING.set(false);
         }
     }
     private static InputStream openLocalFile(Context ctx,String path)throws Exception{
@@ -109,10 +121,17 @@ public class IptvRefreshJob extends JobService {
         if(!online&&!local)return;
         JobScheduler scheduler=(JobScheduler)ctx.getSystemService(Context.JOB_SCHEDULER_SERVICE);
         if(scheduler==null)return;
+        // Keep an existing periodic job: replacing it resets its execution window.
+        JobInfo pending=scheduler.getPendingJob(JOB_ID);
+        int network=online?JobInfo.NETWORK_TYPE_ANY:JobInfo.NETWORK_TYPE_NONE;
+        if(pending!=null && pending.isPeriodic() && pending.getIntervalMillis()==PERIOD
+            && pending.getFlexMillis()==FLEX
+            && pending.getNetworkType()==network)return;
         JobInfo info=new JobInfo.Builder(JOB_ID,new ComponentName(ctx,IptvRefreshJob.class))
-            .setPeriodic(PERIOD)
+            .setPeriodic(PERIOD,FLEX)
             .setRequiredNetworkType(online?JobInfo.NETWORK_TYPE_ANY:JobInfo.NETWORK_TYPE_NONE)
             .setPersisted(false).build();
         scheduler.schedule(info);
     }
 }
+
