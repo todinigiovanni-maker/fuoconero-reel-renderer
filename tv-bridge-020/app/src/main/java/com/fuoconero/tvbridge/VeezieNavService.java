@@ -226,6 +226,14 @@ public class VeezieNavService extends AccessibilityService {
         // Throttle each step, so events caused by our own actions cannot loop.
         if(now-lastAction<850)return;
         try{
+            if(stage<=1){
+                AccessibilityNodeInfo close=findLabel(root,new String[]{"chiudi","close"},true,false);
+                if(close!=null&&click(close)){lastAction=now;attempts=0;return;}
+                AccessibilityNodeInfo global=findLabel(root,new String[]{"ricerca globale","global search"},true,false);
+                if(global!=null&&click(global)){
+                    stage=1;lastAction=now;attempts=0;setStatus("Ricerca globale selezionata");return;
+                }
+            }
             // 0: locate search icon, 1: text field, 2: exact match, 3: Episodes button
             if(stage==0){
                 AccessibilityNodeInfo edit=findEdit(root);
