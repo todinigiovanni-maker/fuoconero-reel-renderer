@@ -42,6 +42,8 @@ public class IptvActivity extends Activity {
     private EditText searchInput;
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private boolean refreshQueued=false;
+    private final java.util.concurrent.atomic.AtomicBoolean metadataRefreshQueued=
+        new java.util.concurrent.atomic.AtomicBoolean(false);
     private String currentCategory="";private int page=0;
     private SharedPreferences prefs;
     @Override public void onCreate(Bundle state){
@@ -114,6 +116,23 @@ public class IptvActivity extends Activity {
                     }
                     showStatus(IptvPublisher.publish(this));
                 }catch(Exception e){showStatus("Projectivy: "+e.getMessage());}
+            });
+        });
+        button(root,"7 · AGGIORNA NOVITÀ IPTV",()->{
+            if(!metadataRefreshQueued.compareAndSet(false,true)){
+                showStatus("Aggiornamento novità già in corso.");return;
+            }
+            if(IptvRefreshJob.isUpdating()){
+                metadataRefreshQueued.set(false);
+                showStatus("Importazione in corso: attendi il completamento.");return;
+            }
+            showStatus("Leggo le novità dalla sorgente IPTV...");
+            worker.execute(()->{
+                try{
+                    IptvMetadata.refreshNow(this);
+                    showStatus(IptvPublisher.publish(this));
+                }catch(Exception e){showStatus("Novità temporaneamente non disponibili.");}
+                finally{metadataRefreshQueued.set(false);}
             });
         });
         label(root,"Questa app non importa automaticamente i canali stranieri: usa la playlist italiana selezionata. La lista originale resta intatta.",14,0xffc3cbde,false);
