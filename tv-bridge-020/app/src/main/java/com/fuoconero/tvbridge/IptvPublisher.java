@@ -19,7 +19,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 
-/** Up to 12 previews per public category. Private/adult entries are never published. */
+/** Up to 12 previews per public category. Adult previews use neutral artwork and route through the PIN screen. */
 public final class IptvPublisher {
     private static final String AUTHORITY="com.fuoconero.iptv.clean053.images";
     private IptvPublisher(){}
@@ -31,6 +31,7 @@ public final class IptvPublisher {
         if(custom.isEmpty())custom="IPTV";
         if(custom.length()>42)custom=custom.substring(0,42);
         String userPlaylist=custom;
+        IptvArtwork artwork=new IptvArtwork(ctx,store);
         int all=0,groups=0;
         for(String category:IptvStore.PUBLIC_GROUPS){
             boolean showCategory="Serie".equals(category)||"Ultime serie".equals(category);
@@ -111,15 +112,16 @@ public final class IptvPublisher {
             HashSet<String> retained=new HashSet<>();
             int order=0;
             for(IptvStore.Media media:items){
-                if(media.adult)continue;
+                if(media.adult&&!category.equals("Adulti TV"))continue;
                 IptvLibrary.Show show=showCategory?showItems.get(order):null;
                 String internal=showCategory?
                     "fuoconero:iptv:show:"+media.id:
                     "fuoconero:iptv:"+media.id;
                 retained.add(internal);
                 File poster=posterFile(ctx,media.id);
-                if(!poster.isFile()){
-                    Bitmap image=renderPoster(category,media.title);
+                boolean realArtwork=artwork.cover(ctx,media,poster);
+                if(!realArtwork && (!poster.isFile()||media.adult)){
+                    Bitmap image=renderPoster(media.adult?"AREA RISERVATA · PIN":category,media.adult?"18+ · Accesso con PIN":media.title);
                     try(FileOutputStream out=new FileOutputStream(poster)){
                         image.compress(Bitmap.CompressFormat.PNG,90,out);
                     }finally{image.recycle();}
@@ -127,7 +129,7 @@ public final class IptvPublisher {
                 Uri photo=new Uri.Builder().scheme("content").authority(AUTHORITY)
                     .appendPath("posters").appendPath(poster.getName())
                     .appendQueryParameter("v",String.valueOf(poster.lastModified())).build();
-                Intent open=showCategory?
+                Intent open=(showCategory||media.adult)?
                     new Intent(ctx,IptvActivity.class):
                     new Intent(ctx,IptvPlayActivity.class);
                 open.setAction(Intent.ACTION_VIEW);
@@ -139,7 +141,8 @@ public final class IptvPublisher {
                 if(showCategory){
                     open.putExtra("series_key",show.key);
                     open.putExtra("series_title",show.title);
-                }else open.putExtra("id",media.id);
+                }else if(media.adult)open.putExtra("adult_media_id",media.id);
+                else open.putExtra("id",media.id);
                 ContentValues values=new ContentValues();
                 values.put(TvContract.PreviewPrograms.COLUMN_CHANNEL_ID,id);
                 values.put(TvContract.PreviewPrograms.COLUMN_TYPE,
@@ -149,7 +152,7 @@ public final class IptvPublisher {
                 values.put(TvContract.PreviewPrograms.COLUMN_TITLE,media.title);
                 values.put(TvContract.PreviewPrograms.COLUMN_SHORT_DESCRIPTION,
                     showCategory?show.count+" episodi · Apri per scegliere la puntata":
-                    media.group+" · Apri in Fuoconero IPTV");
+                    media.adult?"Richiede il PIN · Copertina neutra":media.group+" · Apri in Fuoconero IPTV");
                 values.put(TvContract.PreviewPrograms.COLUMN_INTERNAL_PROVIDER_ID,internal);
                 values.put(TvContract.PreviewPrograms.COLUMN_CONTENT_ID,showCategory?"iptv:series:"+show.key:"iptv:"+media.id);
                 values.put(TvContract.PreviewPrograms.COLUMN_WEIGHT,1000-(order++));
@@ -175,8 +178,9 @@ public final class IptvPublisher {
             }
             groups++;
         }
+        store.close();
         return "Projectivy: "+all+" anteprime pubblicate in "+groups+
-            " categorie; nessuna immagine per adulti nella home.";
+            " categorie; area adulti protetta da PIN con copertine neutre.";
     }
     private static File posterFile(Context ctx,long id){
         File dir=new File(ctx.getFilesDir(),"posters");
