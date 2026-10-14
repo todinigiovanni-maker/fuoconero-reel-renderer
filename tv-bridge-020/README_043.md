@@ -107,9 +107,7 @@ nei limiti consentiti. Non è garantito un aggiornamento istantaneo.
 4. Per navigazione Veezie/avvio da Projectivy, abilita in Impostazioni TV >
    Accessibilità **Fuoconero 0.4.3 - Veezie e aggiornamento home**.
 5. In Projectivy > Modifica canali > **Fuoconero TV Bridge 0.4.3 SAFE TEST**
-   abilita **🔥 FUOCONERO — CONTINUA A GUARDARE**, **Fuoconero · Veezie/Trakt · 0.4.3** e le categorie desiderate.
-   La riga Veezie/Trakt separata contiene tutte le schede sincronizzate in 16:9;
-   la riga unificata mantiene i 20 recenti misti Veezie/IPTV.
+   abilita **🔥 FUOCONERO — CONTINUA A GUARDARE** e le categorie desiderate.
 6. Per una sola riga visibile complessiva, puoi nascondere le vecchie righe
    Continua/Veezie-Trakt nelle impostazioni di Projectivy, senza cancellare
    le applicazioni o i loro dati. Non è obbligatorio per il primo test.
