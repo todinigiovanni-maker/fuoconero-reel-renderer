@@ -119,7 +119,7 @@ public class IptvActivity extends Activity {
         label(root,"Questa app non importa automaticamente i canali stranieri: usa la playlist italiana selezionata. La lista originale resta intatta.",14,0xffc3cbde,false);
         label(root,"LE TUE CATEGORIE",20,Color.WHITE,true);
         for(String c:new String[]{"Continua","Ultimi film","Ultime serie","Preferiti","TV Italia","Sport","DAZN","Documentari","Film","Serie","Altri canali","Tutti"}){
-            button(root,"▶ "+("Novita".equals(c)?"Novità della playlist":c),()->showCategory(c,0,""));
+            button(root,"▶ "+("Ultime serie".equals(c)?"Serie aggiornate":"Novita".equals(c)?"Novità della playlist":c),()->showCategory(c,0,""));
         }
         button(root,"🔒 Area riservata adulti (PIN)",()->unlockAdult(()->showAdultHome()));
         contentArea=new LinearLayout(this);
@@ -508,7 +508,7 @@ public class IptvActivity extends Activity {
         if(category.equals("Ultimi film"))
             label(contentArea,"Primo caricamento: ordine della playlist. Dai successivi aggiornamenti: nuove aggiunte effettive.",14,0xffc7d1df,false);
         if(category.equals("Continua"))
-            label(contentArea,"Cronologia di Fuoconero IPTV: non legge lo storico privato di IPTV Extreme.",14,0xffc7d1df,false);
+            label(contentArea,"Avanzamento letto dal player Fuoconero IPTV. I lettori esterni non comunicano qui i tempi.",14,0xffc7d1df,false);
         button(contentArea,"← Categorie",()->{contentArea.removeAllViews();currentCategory="";});
         worker.execute(()->{
             try(IptvLibrary library=new IptvLibrary(this)){
