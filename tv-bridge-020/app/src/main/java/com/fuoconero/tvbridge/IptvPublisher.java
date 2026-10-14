@@ -87,7 +87,7 @@ public final class IptvPublisher {
                 row.put(TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID,"fuoconero-iptv-051-"+category);
                 Intent home=new Intent(ctx,IptvActivity.class);
                 home.putExtra("category",category);
-                home.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                home.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
                 row.put(TvContract.Channels.COLUMN_APP_LINK_INTENT_URI,home.toUri(Intent.URI_INTENT_SCHEME));
                 Uri created=ctx.getContentResolver().insert(TvContract.Channels.CONTENT_URI,row);
                 if(created==null)throw new Exception("Non riesco a creare il canale "+category);
@@ -148,6 +148,7 @@ public final class IptvPublisher {
                         .appendPath(show.key).build():
                     Uri.parse("fuoconero-iptv://play/"+media.id));
                 open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                if(showCategory || media.adult)open.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
                 if(showCategory){
                     open.putExtra("series_key",show.key);
                     open.putExtra("series_title",show.title);
