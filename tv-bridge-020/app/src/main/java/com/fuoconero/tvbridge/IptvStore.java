@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
 public final class IptvStore extends SQLiteOpenHelper {
     public interface Progress { void say(String message); }
     public static final String PREFS="iptv_settings";
-    public static final String[] PUBLIC_GROUPS={"Continua","Ultimi film","Ultime serie","TV Italia","Sport","DAZN","Documentari","Film","Serie"};
+    public static final String[] PUBLIC_GROUPS={"Continua","Ultimi film","Ultime serie","TV Italia","Sport","DAZN","Documentari","Film","Serie","Adulti TV"};
     public static final class Media {
         public long id;
         public String title,category,group,url,kind;
