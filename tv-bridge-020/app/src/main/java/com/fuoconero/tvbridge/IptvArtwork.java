@@ -33,6 +33,12 @@ public final class IptvArtwork {
                         for(IptvLibrary.Recent recent:lib.recentlyOpened(12))items.add(recent.media);
                     }
                 }else items=store.list(category,"",0,12);
+                try(IptvLibrary lib=new IptvLibrary(ctx)){
+                    for(IptvStore.Media media:items){
+                        String image=lib.artwork(media.id);
+                        if(!media.adult && image!=null && !image.isEmpty())images.put(media.id,image);
+                    }
+                }
                 for(IptvStore.Media media:items){
                     if(media.adult||media.url==null)continue;
                     ArrayList<Long> ids=wanted.get(media.url);
@@ -53,7 +59,7 @@ public final class IptvArtwork {
                     }else if(!line.startsWith("#")){
                         ArrayList<Long> ids=wanted.remove(line.trim());
                         if(ids!=null&&(logo.startsWith("https://")||logo.startsWith("http://"))&&logo.length()<2048)
-                            for(Long id:ids)images.put(id,logo);
+                            for(Long id:ids)if(!images.containsKey(id))images.put(id,logo);
                         logo="";
                     }
                 }
