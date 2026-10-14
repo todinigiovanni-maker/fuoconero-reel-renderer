@@ -46,7 +46,7 @@ public class OpenContentActivity extends Activity {
                 episode==null?"":episode);
             if(openVeezie(this)){
                 mode="NAVIGAZIONE_AUTOMATICA_RICHIESTA";
-                Toast.makeText(this,"Cerco "+title+" in Veezie (max 25 s)",Toast.LENGTH_LONG).show();
+                Toast.makeText(this,"Cerco "+title+" in Veezie (max 60 s)",Toast.LENGTH_LONG).show();
             }else{
                 VeezieNavService.cancel(this);
                 mode="VEEZIE_NON_INSTALLATA";
