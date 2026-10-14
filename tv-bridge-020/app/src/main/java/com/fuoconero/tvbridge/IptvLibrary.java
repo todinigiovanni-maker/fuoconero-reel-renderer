@@ -37,7 +37,7 @@ public final class IptvLibrary extends SQLiteOpenHelper {
         public long positionMs,durationMs,openedAt;
     }
     public IptvLibrary(Context ctx){
-        super(ctx,"fuoconero_library.db",null,1);
+        super(ctx,"fuoconero_library.db",null,2);
         app=ctx.getApplicationContext();
         setWriteAheadLoggingEnabled(true);
     }
@@ -53,8 +53,24 @@ public final class IptvLibrary extends SQLiteOpenHelper {
         db.execSQL("CREATE TABLE watch_state(media_id INTEGER PRIMARY KEY, position_ms INTEGER NOT NULL DEFAULT 0, duration_ms INTEGER NOT NULL DEFAULT 0, last_opened INTEGER NOT NULL DEFAULT 0)");
         db.execSQL("CREATE INDEX watch_recent ON watch_state(last_opened)");
         db.execSQL("CREATE TABLE index_state(id INTEGER PRIMARY KEY CHECK(id=1), indexed_at INTEGER NOT NULL)");
+        createSourceTables(db);
     }
-    @Override public void onUpgrade(SQLiteDatabase db,int oldV,int newV){}
+    private static void createSourceTables(SQLiteDatabase db){
+        db.execSQL("CREATE TABLE IF NOT EXISTS source_movies(media_id INTEGER PRIMARY KEY, added_at INTEGER NOT NULL, artwork TEXT NOT NULL)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS source_series(series_key TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, artwork TEXT NOT NULL)");
+    }
+    @Override public void onUpgrade(SQLiteDatabase db,int oldV,int newV){createSourceTables(db);}
+    public String artwork(long mediaId){
+        try(Cursor c=getReadableDatabase().rawQuery(
+            "SELECT artwork FROM source_movies WHERE media_id=? UNION ALL "+
+            "SELECT s.artwork FROM source_series s JOIN series_index i ON i.series_key=s.series_key WHERE i.media_id=? LIMIT 1",
+            new String[]{String.valueOf(mediaId),String.valueOf(mediaId)})){
+            return c.moveToFirst()?c.getString(0):"";
+        }
+    }
+    private boolean sourceDates(boolean series){
+        return app.getSharedPreferences("iptv_metadata",Context.MODE_PRIVATE).getInt(series?"series":"movies",0)>0;
+    }
     private static String clean(String s){return s.trim().replaceAll("\\s+"," ");}
     private static String[] parse(String title){
         Matcher m=EP.matcher(title);
@@ -115,21 +131,22 @@ public final class IptvLibrary extends SQLiteOpenHelper {
         String where=" WHERE 1=1";
         ArrayList<String> args=new ArrayList<>();
         if(filter!=null && !filter.trim().isEmpty()){
-            where+=" AND series_key LIKE ? ESCAPE '\\'";
+            where+=" AND i.series_key LIKE ? ESCAPE '\\'";
             String term=filter.trim().toLowerCase(Locale.ROOT)
                 .replace("\\","\\\\").replace("%","\\%").replace("_","\\_");
             args.add("%"+term+"%");
         }
         long threshold=newFrom();
-        if(newOnly && threshold<Long.MAX_VALUE){
-            where+=" AND first_seen>=?";
+        if(newOnly && sourceDates(true))where+=" AND s.updated_at IS NOT NULL";
+        if(newOnly && !sourceDates(true) && threshold<Long.MAX_VALUE){
+            where+=" AND i.first_seen>=?";
             args.add(String.valueOf(threshold));
         }
         args.add(String.valueOf(Math.min(50,Math.max(1,limit))));
         args.add(String.valueOf(Math.max(0,offset)));
-        String sql="SELECT series_key,MAX(display_title),COUNT(*),MAX(media_id)"+
-            " FROM series_index"+where+" GROUP BY series_key"+
-            " ORDER BY MAX(first_seen) DESC,MAX(media_id) DESC LIMIT ? OFFSET ?";
+        String sql="SELECT i.series_key,MAX(i.display_title),COUNT(*),MAX(i.media_id)"+
+            " FROM series_index i LEFT JOIN source_series s ON s.series_key=i.series_key"+where+" GROUP BY i.series_key"+
+            " ORDER BY MAX(COALESCE(s.updated_at,i.first_seen)) DESC,MAX(i.media_id) DESC LIMIT ? OFFSET ?";
         try(Cursor c=getReadableDatabase().rawQuery(sql,args.toArray(new String[0]))){
             while(c.moveToNext()){
                 Show show=new Show();
@@ -159,17 +176,30 @@ public final class IptvLibrary extends SQLiteOpenHelper {
     }
     public ArrayList<IptvStore.Media> newestFilms(int offset,int limit){
         ArrayList<IptvStore.Media> rows=new ArrayList<>();
+        if(sourceDates(false)){
+            int skip=Math.max(0,offset),cap=Math.min(50,Math.max(1,limit));
+            try(IptvStore store=new IptvStore(app);Cursor c=getReadableDatabase().rawQuery(
+                "SELECT media_id FROM source_movies ORDER BY added_at DESC,media_id DESC",null)){
+                while(c.moveToNext()){
+                    IptvStore.Media m=store.find(c.getLong(0));
+                    if(m==null || m.adult || !"Film".equals(m.category) || !"Film".equals(m.kind))continue;
+                    if(skip-->0)continue;
+                    rows.add(m);if(rows.size()>=cap)break;
+                }
+            }
+            return rows;
+        }
         long threshold=newFrom();
-        String where=threshold<Long.MAX_VALUE ? " AND first_seen>=?" : "";
+        String where=!sourceDates(false) && threshold<Long.MAX_VALUE ? " AND e.first_seen>=?" : "";
         ArrayList<String> args=new ArrayList<>();
         if(!where.isEmpty())args.add(String.valueOf(threshold));
         args.add(String.valueOf(Math.min(50,Math.max(1,limit))));
         args.add(String.valueOf(Math.max(0,offset)));
         try(IptvStore store=new IptvStore(app);
             Cursor c=store.getReadableDatabase().rawQuery(
-                "SELECT id,title,grp,url,category,kind,adult,fav FROM entries"+
+                "SELECT e.id,e.title,e.grp,e.url,e.category,e.kind,e.adult,e.fav FROM entries e"+
                 " WHERE category='Film' AND kind='Film' AND adult=0"+where+
-                " ORDER BY first_seen DESC,id DESC LIMIT ? OFFSET ?",
+                " ORDER BY e.first_seen DESC,e.id DESC LIMIT ? OFFSET ?",
                 args.toArray(new String[0]))){
             while(c.moveToNext()){
                 IptvStore.Media m=new IptvStore.Media();

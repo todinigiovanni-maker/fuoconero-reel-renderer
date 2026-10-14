@@ -37,11 +37,16 @@ public class IptvActivity extends Activity {
     private static final int PICK_M3U=440;
     private static final int READ_M3U_PERMISSION=441;
     private static final long PIN_WINDOW=5L*60L*1000L;
-    private LinearLayout root,contentArea;
+    private LinearLayout root,contentArea,menuArea;
+    private ScrollView rootScroll;
+    private EditText globalSearch;
+    private int viewGeneration=0;
     private TextView status,playlistLabel,sourceLabel;
     private EditText searchInput;
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private boolean refreshQueued=false;
+    private final java.util.concurrent.atomic.AtomicBoolean metadataRefreshQueued=
+        new java.util.concurrent.atomic.AtomicBoolean(false);
     private String currentCategory="";private int page=0;
     private SharedPreferences prefs;
     @Override public void onCreate(Bundle state){
@@ -49,6 +54,7 @@ public class IptvActivity extends Activity {
         prefs=getSharedPreferences(IptvStore.PREFS,MODE_PRIVATE);
         immersiveMode();
         ScrollView scroll=new ScrollView(this);
+        rootScroll=scroll;
         scroll.setFillViewport(true);
         root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -72,17 +78,39 @@ public class IptvActivity extends Activity {
         root.addView(sourceLabel);
         updatePlaylistLabels();
 
+        globalSearch=new EditText(this);
+        globalSearch.setSingleLine(true);
+        globalSearch.setTextSize(18);
+        globalSearch.setTextColor(Color.WHITE);
+        globalSearch.setHintTextColor(0xffa6b4c8);
+        globalSearch.setHint("Cerca serie, film o canali");
+        globalSearch.setInputType(InputType.TYPE_CLASS_TEXT);
+        globalSearch.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        root.addView(globalSearch);
+        button(root,"🔎 Cerca nel catalogo",()->searchCatalog(globalSearch.getText().toString(),0));
+        globalSearch.setOnEditorActionListener((v,action,event)->{
+            if(action==android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH ||
+               (event!=null && event.getKeyCode()==android.view.KeyEvent.KEYCODE_ENTER &&
+                event.getAction()==android.view.KeyEvent.ACTION_DOWN)){
+                searchCatalog(globalSearch.getText().toString(),0);return true;
+            }
+            return false;
+        });
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+        menuArea=new LinearLayout(this);
+        menuArea.setOrientation(LinearLayout.VERTICAL);
+        root.addView(menuArea);
         status=new TextView(this);
         status.setTextColor(0xffffddaa);
         status.setTextSize(16);
         status.setPadding(0,12,0,15);
-        root.addView(status);
+        menuArea.addView(status);
 
-        button(root,"1 · DAI UN NOME ALLA PLAYLIST",this::promptPlaylistName);
-        button(root,"2 · IMPOSTA LINK M3U",this::promptPlaylistUrl);
-        button(root,"3 · AGGIORNA LISTA ORA",this::refresh);
-        button(root,"4 · IMPORTA PLAYLIST ITALIANA DA DOWNLOAD",this::importFromDownloads);
-        button(root,"5 · DIAGNOSTICA CATALOGO",()->{
+        button(menuArea,"1 · DAI UN NOME ALLA PLAYLIST",this::promptPlaylistName);
+        button(menuArea,"2 · IMPOSTA LINK M3U",this::promptPlaylistUrl);
+        button(menuArea,"3 · AGGIORNA LISTA ORA",this::refresh);
+        button(menuArea,"4 · IMPORTA PLAYLIST ITALIANA DA DOWNLOAD",this::importFromDownloads);
+        button(menuArea,"5 · DIAGNOSTICA CATALOGO",()->{
             if(IptvRefreshJob.isUpdating()){
                 showStatus("Importazione M3U ancora in corso. Attendi il messaggio di completamento prima della diagnostica.");
                 return;
@@ -101,7 +129,7 @@ public class IptvActivity extends Activity {
                     ". Se stai importando la lista, attendi che finisca e riprova.");}
             });
         });
-        button(root,"6 · MOSTRA LE CATEGORIE IN PROJECTIVY",()->{
+        button(menuArea,"6 · MOSTRA LE CATEGORIE IN PROJECTIVY",()->{
             if(IptvRefreshJob.isUpdating()){
                 showStatus("Importazione in corso. Le schede saranno pubblicate automaticamente alla fine.");
                 return;
@@ -116,12 +144,29 @@ public class IptvActivity extends Activity {
                 }catch(Exception e){showStatus("Projectivy: "+e.getMessage());}
             });
         });
-        label(root,"Questa app non importa automaticamente i canali stranieri: usa la playlist italiana selezionata. La lista originale resta intatta.",14,0xffc3cbde,false);
-        label(root,"LE TUE CATEGORIE",20,Color.WHITE,true);
+        button(menuArea,"7 · AGGIORNA NOVITÀ IPTV",()->{
+            if(!metadataRefreshQueued.compareAndSet(false,true)){
+                showStatus("Aggiornamento novità già in corso.");return;
+            }
+            if(IptvRefreshJob.isUpdating()){
+                metadataRefreshQueued.set(false);
+                showStatus("Importazione in corso: attendi il completamento.");return;
+            }
+            showStatus("Leggo le novità dalla sorgente IPTV...");
+            worker.execute(()->{
+                try{
+                    IptvMetadata.refreshNow(this);
+                    showStatus(IptvPublisher.publish(this));
+                }catch(Exception e){showStatus("Novità temporaneamente non disponibili.");}
+                finally{metadataRefreshQueued.set(false);}
+            });
+        });
+        label(menuArea,"Questa app non importa automaticamente i canali stranieri: usa la playlist italiana selezionata. La lista originale resta intatta.",14,0xffc3cbde,false);
+        label(menuArea,"LE TUE CATEGORIE",20,Color.WHITE,true);
         for(String c:new String[]{"Continua","Ultimi film","Ultime serie","Preferiti","TV Italia","Sport","DAZN","Documentari","Film","Serie","Altri canali","Tutti"}){
-            button(root,"▶ "+("Novita".equals(c)?"Novità della playlist":c),()->showCategory(c,0,""));
+            button(menuArea,"▶ "+("Ultime serie".equals(c)?"Serie aggiornate":"Novita".equals(c)?"Novità della playlist":c),()->showCategory(c,0,""));
         }
-        button(root,"🔒 Area riservata adulti (PIN)",()->unlockAdult(()->showAdultHome()));
+        button(menuArea,"🔒 Area riservata adulti (PIN)",()->unlockAdult(()->showAdultHome()));
         contentArea=new LinearLayout(this);
         contentArea.setOrientation(LinearLayout.VERTICAL);
         contentArea.setPadding(0,12,0,0);
@@ -140,18 +185,91 @@ public class IptvActivity extends Activity {
                     "Catalogo pronto: "+count+" contenuti. Premi 5 per la diagnostica.");
             }catch(Exception e){showStatus("Catalogo temporaneamente occupato: attendi la fine dell'importazione e riprova.");}
         });
-        long adultMedia=getIntent().getLongExtra("adult_media_id",-1L);
-        if(adultMedia>=0)unlockAdult(()->openMedia(adultMedia));
-        String category=getIntent().getStringExtra("category");
+        routeIntent(getIntent());
+    }
+    @Override protected void onNewIntent(Intent intent){
+        super.onNewIntent(intent);
+        setIntent(intent);
+        routeIntent(intent);
+    }
+    private void routeIntent(Intent intent){
+        if(intent==null)return;
+        long adult=intent.getLongExtra("adult_media_id",-1L);
+        if(adult>=0){unlockAdult(()->openMedia(adult));return;}
+        String key=intent.getStringExtra("series_key");
+        Uri data=intent.getData();
+        if((key==null || key.isEmpty()) && data!=null &&
+           "fuoconero-iptv".equals(data.getScheme()) && "series".equals(data.getHost()))
+            key=data.getLastPathSegment();
+        if(key!=null && !key.isEmpty()){
+            String title=intent.getStringExtra("series_title");
+            showSeriesEpisodes(key,title==null?key:title,0);return;
+        }
+        String query=intent.getStringExtra("search_query");
+        if(query==null && Intent.ACTION_SEARCH.equals(intent.getAction()))
+            query=intent.getStringExtra(android.app.SearchManager.QUERY);
+        if(query!=null){globalSearch.setText(query);searchCatalog(query,0);return;}
+        String category=intent.getStringExtra("category");
         if(category!=null && !category.isEmpty()){
-            if(category.startsWith("Adulti"))unlockAdult(()->showAdultHome());
+            if(category.startsWith("Adulti"))unlockAdult(this::showAdultHome);
             else showCategory(category,0,"");
+            return;
         }
-        String seriesKey=getIntent().getStringExtra("series_key");
-        if(seriesKey!=null && !seriesKey.isEmpty()){
-            String seriesTitle=getIntent().getStringExtra("series_title");
-            showSeriesEpisodes(seriesKey,seriesTitle==null?"Serie":seriesTitle,0);
-        }
+        showMainMenu();
+    }
+    private int beginContent(String category,int at){
+        viewGeneration++;
+        currentCategory=category;page=at;
+        menuArea.setVisibility(View.GONE);
+        playlistLabel.setVisibility(View.GONE);
+        sourceLabel.setVisibility(View.GONE);
+        contentArea.removeAllViews();
+        revealContent();
+        return viewGeneration;
+    }
+    private void revealContent(){
+        contentArea.post(()->rootScroll.smoothScrollTo(0,0));
+    }
+    private void showMainMenu(){
+        viewGeneration++;currentCategory="";page=0;
+        contentArea.removeAllViews();
+        menuArea.setVisibility(View.VISIBLE);
+        playlistLabel.setVisibility(View.VISIBLE);
+        sourceLabel.setVisibility(View.VISIBLE);
+        rootScroll.post(()->rootScroll.smoothScrollTo(0,0));
+    }
+    private void searchCatalog(String query,int at){
+        final String term=query==null?"":query.trim();
+        if(term.isEmpty()){android.widget.Toast.makeText(this,"Scrivi il titolo da cercare.",android.widget.Toast.LENGTH_SHORT).show();globalSearch.requestFocus();return;}
+        if(term.length()>100){showStatus("Usa un titolo più breve.");return;}
+        InputMethodManager keyboard=(InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE);
+        if(keyboard!=null)keyboard.hideSoftInputFromWindow(globalSearch.getWindowToken(),0);
+        final int generation=beginContent("Ricerca:"+term,at);
+        label(contentArea,"Risultati per «"+term+"»",22,Color.WHITE,true);
+        button(contentArea,"← Categorie",this::showMainMenu);
+        worker.execute(()->{
+            try(IptvLibrary library=new IptvLibrary(this);IptvStore store=new IptvStore(this)){
+                ArrayList<IptvLibrary.Show> shows=library.shows(term,at*20,20,false);
+                ArrayList<IptvStore.Media> media=store.searchMedia(term,at*30,30);
+                runOnUiThread(()->{
+                    if(generation!=viewGeneration)return;
+                    if(shows.isEmpty() && media.isEmpty())
+                        label(contentArea,"Nessun risultato nel catalogo.",17,0xffc7d1df,false);
+                    if(!shows.isEmpty())label(contentArea,"SERIE",18,0xffff984c,true);
+                    for(IptvLibrary.Show show:shows)
+                        button(contentArea,"📺 "+show.title+" · "+show.count+" episodi",()->
+                            showSeriesEpisodes(show.key,show.title,0));
+                    if(!media.isEmpty())label(contentArea,"FILM E CANALI",18,0xffff984c,true);
+                    for(IptvStore.Media item:media)
+                        button(contentArea,("TV".equals(item.kind)?"📡 ":"🎬 ")+item.title+
+                            " · "+item.group,()->openMedia(item.id));
+                    if(shows.size()==20 || media.size()==30)
+                        button(contentArea,"Altri risultati →",()->searchCatalog(term,at+1));
+                    if(at>0)button(contentArea,"← Risultati precedenti",()->searchCatalog(term,at-1));
+                    revealContent();
+                });
+            }catch(Exception e){showStatus("Ricerca temporaneamente non disponibile.");}
+        });
     }
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
@@ -368,8 +486,7 @@ public class IptvActivity extends Activity {
         if(category.equals("Ultimi film")||category.equals("Continua")){
             showSpecialList(category,nextPage);return;
         }
-        currentCategory=category;page=nextPage;
-        contentArea.removeAllViews();
+        final int generation=beginContent(category,nextPage);
         if(category.equals("Sport")){
             button(contentArea,"⚽ DAZN · Vedi tutti i canali",()->showCategory("DAZN",0,""));
         }
@@ -384,13 +501,13 @@ public class IptvActivity extends Activity {
         }
         searchInput.setText(term);
         button(contentArea,"🔎 Cerca in "+category,()->showCategory(category,0,searchInput.getText().toString()));
-        button(contentArea,"← Categorie",()->{contentArea.removeAllViews();currentCategory="";});
+        button(contentArea,"← Categorie",this::showMainMenu);
         final int offset=page*50;
         worker.execute(()->{
             try{
                 ArrayList<IptvStore.Media> rows=new IptvStore(this).list(category,term,offset,50);
                 runOnUiThread(()->{
-                    if(!category.equals(currentCategory)||nextPage!=page)return;
+                    if(generation!=viewGeneration)return;
                     if(rows.isEmpty())label(contentArea,"Nessun contenuto trovato.",17,0xffc7d1df,false);
                     for(IptvStore.Media entry:rows){
                         LinearLayout line=new LinearLayout(this);
@@ -437,8 +554,7 @@ public class IptvActivity extends Activity {
         startActivity(intent);
     }
     private void showSeriesList(String category,int at,String term){
-        currentCategory=category;page=at;
-        contentArea.removeAllViews();
+        final int generation=beginContent(category,at);
         label(contentArea,category+" · una scheda per serie",21,Color.WHITE,true);
         EditText filter=new EditText(this);
         filter.setTextColor(Color.WHITE);
@@ -448,12 +564,12 @@ public class IptvActivity extends Activity {
         filter.setText(term);
         contentArea.addView(filter);
         button(contentArea,"🔎 Cerca",()->showSeriesList(category,0,filter.getText().toString()));
-        button(contentArea,"← Categorie",()->{contentArea.removeAllViews();currentCategory="";});
+        button(contentArea,"← Categorie",this::showMainMenu);
         worker.execute(()->{
             try(IptvLibrary library=new IptvLibrary(this)){
                 ArrayList<IptvLibrary.Show> rows=library.shows(term,at*35,35,category.equals("Ultime serie"));
                 runOnUiThread(()->{
-                    if(!category.equals(currentCategory)||page!=at)return;
+                    if(generation!=viewGeneration)return;
                     if(rows.isEmpty())label(contentArea,"Nessuna serie trovata.",17,0xffc7d1df,false);
                     for(IptvLibrary.Show show:rows){
                         button(contentArea,"📺 "+show.title+"  ·  "+show.count+" episodi",()->
@@ -469,8 +585,7 @@ public class IptvActivity extends Activity {
     }
     private void showSeriesEpisodes(String key,String title,int at){
         String marker="Serie:"+key;
-        currentCategory=marker;page=at;
-        contentArea.removeAllViews();
+        final int generation=beginContent(marker,at);
         label(contentArea,title+" · episodi",22,Color.WHITE,true);
         button(contentArea,"← Tutte le serie",()->showSeriesList("Serie",0,""));
         worker.execute(()->{
@@ -486,7 +601,7 @@ public class IptvActivity extends Activity {
                     else labels.add(ep.title);
                 }
                 runOnUiThread(()->{
-                    if(!marker.equals(currentCategory)||page!=at)return;
+                    if(generation!=viewGeneration)return;
                     if(rows.isEmpty())label(contentArea,"Nessuna puntata disponibile.",16,0xffc7d1df,false);
                     for(int i=0;i<rows.size();i++){
                         long id=rows.get(i).id;
@@ -502,14 +617,13 @@ public class IptvActivity extends Activity {
         });
     }
     private void showSpecialList(String category,int at){
-        currentCategory=category;page=at;
-        contentArea.removeAllViews();
+        final int generation=beginContent(category,at);
         label(contentArea,category,21,Color.WHITE,true);
         if(category.equals("Ultimi film"))
-            label(contentArea,"Primo caricamento: ordine della playlist. Dai successivi aggiornamenti: nuove aggiunte effettive.",14,0xffc7d1df,false);
+            label(contentArea,"Ordine per data di aggiunta del fornitore, quando disponibile.",14,0xffc7d1df,false);
         if(category.equals("Continua"))
-            label(contentArea,"Cronologia di Fuoconero IPTV: non legge lo storico privato di IPTV Extreme.",14,0xffc7d1df,false);
-        button(contentArea,"← Categorie",()->{contentArea.removeAllViews();currentCategory="";});
+            label(contentArea,"Avanzamento letto dal player Fuoconero IPTV. I lettori esterni non comunicano qui i tempi.",14,0xffc7d1df,false);
+        button(contentArea,"← Categorie",this::showMainMenu);
         worker.execute(()->{
             try(IptvLibrary library=new IptvLibrary(this)){
                 ArrayList<IptvStore.Media> films=category.equals("Ultimi film")?
@@ -517,7 +631,7 @@ public class IptvActivity extends Activity {
                 ArrayList<IptvLibrary.Recent> history=category.equals("Continua")?
                     library.recentlyOpened(35):new ArrayList<>();
                 runOnUiThread(()->{
-                    if(!category.equals(currentCategory)||page!=at)return;
+                    if(generation!=viewGeneration)return;
                     if(category.equals("Ultimi film")){
                         if(films.isEmpty())label(contentArea,"Nessuna nuova aggiunta.",16,0xffc7d1df,false);
                         for(IptvStore.Media m:films)button(contentArea,"🎬 "+m.title,()->openMedia(m.id));
@@ -541,15 +655,14 @@ public class IptvActivity extends Activity {
     }
 
     private void showAdultHome(){
-        contentArea.removeAllViews();
-        currentCategory="";
+        beginContent("Adulti",0);
         label(contentArea,"AREA RISERVATA (PIN)",21,0xffffba92,true);
         label(contentArea,"Sulla home Projectivy compaiono solo copertine neutre; il PIN protegge la riproduzione.",15,0xffc8d1df,false);
         button(contentArea,"Canali adulti TV",()->showCategory("Adulti TV",0,""));
         button(contentArea,"Video adulti on demand",()->showCategory("Adulti Video",0,""));
         button(contentArea,"Blocca ora",()->{
             prefs.edit().remove("pin_unlocked_until").apply();
-            contentArea.removeAllViews();
+            showMainMenu();
             showStatus("Area privata bloccata.");
         });
     }
@@ -637,6 +750,9 @@ public class IptvActivity extends Activity {
     private void showStatus(String value){
         runOnUiThread(()->{
             if(status!=null)status.setText(value);
+            if(menuArea!=null && menuArea.getVisibility()!=View.VISIBLE &&
+               (value.startsWith("Ricerca temporaneamente") || value.startsWith("Episodi:") || value.startsWith("Serie:")))
+                label(contentArea,value,16,0xffffddaa,false);
         });
     }
     private void immersiveMode(){

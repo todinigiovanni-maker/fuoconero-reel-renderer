@@ -329,6 +329,28 @@ public final class IptvStore extends SQLiteOpenHelper {
         }
         return result;
     }
+
+    /** Public title search: series episodes are grouped by IptvLibrary instead. */
+    public ArrayList<Media> searchMedia(String term,int offset,int limit){
+        ArrayList<Media> result=new ArrayList<>();
+        String safe=term.trim().replace("\\","\\\\").replace("%","\\%").replace("_","\\_");
+        try(Cursor c=getReadableDatabase().rawQuery(
+            "SELECT id,title,grp,url,category,kind,adult,fav FROM entries "+
+            "WHERE adult=0 AND NOT(category='Serie' AND kind='Video') "+
+            "AND title NOT LIKE '---%' AND title NOT LIKE '-- %' "+
+            "AND title LIKE ? ESCAPE '\\' "+
+            "ORDER BY CASE WHEN lower(title)=lower(?) THEN 0 ELSE 1 END,title COLLATE NOCASE,id "+
+            "LIMIT ? OFFSET ?",new String[]{"%"+safe+"%",term.trim(),
+                String.valueOf(Math.min(50,Math.max(1,limit))),String.valueOf(Math.max(0,offset))})){
+            while(c.moveToNext()){
+                Media m=new Media();m.id=c.getLong(0);m.title=c.getString(1);m.group=c.getString(2);
+                m.url=c.getString(3);m.category=c.getString(4);m.kind=c.getString(5);
+                m.adult=false;m.fav=c.getInt(7)!=0;result.add(m);
+            }
+        }
+        return result;
+    }
+
     public Media find(long id){
         try(Cursor c=getReadableDatabase().rawQuery("SELECT id,title,grp,url,category,kind,adult,fav FROM entries WHERE id=?",
             new String[]{String.valueOf(id)})){

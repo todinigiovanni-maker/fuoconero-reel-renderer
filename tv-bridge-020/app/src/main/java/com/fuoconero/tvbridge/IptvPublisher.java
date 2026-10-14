@@ -23,7 +23,8 @@ import java.util.HashSet;
 public final class IptvPublisher {
     private static final String AUTHORITY="com.fuoconero.iptv.clean053.images";
     private IptvPublisher(){}
-    public static String publish(Context ctx)throws Exception{
+    public static synchronized String publish(Context ctx)throws Exception{
+        IptvMetadata.refresh(ctx);
         IptvStore store=new IptvStore(ctx);
         SharedPreferences prefs=ctx.getSharedPreferences("iptv_channels",Context.MODE_PRIVATE);
         String custom=ctx.getSharedPreferences(IptvStore.PREFS,Context.MODE_PRIVATE)
@@ -54,8 +55,11 @@ public final class IptvPublisher {
                         items=library.newestFilms(0,12);
                     }else{
                         items=new ArrayList<>();
-                        for(IptvLibrary.Recent recent:library.recentlyOpened(12))
-                            items.add(recent.media);
+                        for(IptvLibrary.Recent recent:library.recentlyOpened(35)){
+                            if(!"TV".equals(recent.media.kind) && recent.durationMs>0 && recent.positionMs<recent.durationMs*0.95)
+                                items.add(recent.media);
+                            if(items.size()>=12)break;
+                        }
                     }
                 }
             }else items=store.list(category,"",0,12);
@@ -72,7 +76,7 @@ public final class IptvPublisher {
             if(id>0){
                 ContentValues rename=new ContentValues();
                 rename.put(TvContract.Channels.COLUMN_DISPLAY_NAME,
-                    "Fuoconero · "+userPlaylist+" · "+category);
+                    "Fuoconero · "+userPlaylist+" · "+("Ultime serie".equals(category)?"Serie aggiornate":category));
                 ctx.getContentResolver().update(TvContract.buildChannelUri(id),
                     rename,null,null);
             }
@@ -83,7 +87,7 @@ public final class IptvPublisher {
                 row.put(TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID,"fuoconero-iptv-051-"+category);
                 Intent home=new Intent(ctx,IptvActivity.class);
                 home.putExtra("category",category);
-                home.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                home.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
                 row.put(TvContract.Channels.COLUMN_APP_LINK_INTENT_URI,home.toUri(Intent.URI_INTENT_SCHEME));
                 Uri created=ctx.getContentResolver().insert(TvContract.Channels.CONTENT_URI,row);
                 if(created==null)throw new Exception("Non riesco a creare il canale "+category);
@@ -126,6 +130,12 @@ public final class IptvPublisher {
                         image.compress(Bitmap.CompressFormat.PNG,90,out);
                     }finally{image.recycle();}
                 }
+                long[] playback={0,0};
+                if(!showCategory && !media.adult && !"TV".equals(media.kind)){
+                    try(IptvLibrary library=new IptvLibrary(ctx)){playback=library.playback(media.id);}
+                }
+                boolean hasProgress=playback[1]>0 && playback[0]>=0 && playback[0]<=playback[1];
+                if(hasProgress)poster=progressPoster(poster,playback[0],playback[1]);
                 Uri photo=new Uri.Builder().scheme("content").authority(AUTHORITY)
                     .appendPath("posters").appendPath(poster.getName())
                     .appendQueryParameter("v",String.valueOf(poster.lastModified())).build();
@@ -138,6 +148,7 @@ public final class IptvPublisher {
                         .appendPath(show.key).build():
                     Uri.parse("fuoconero-iptv://play/"+media.id));
                 open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                if(showCategory || media.adult)open.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
                 if(showCategory){
                     open.putExtra("series_key",show.key);
                     open.putExtra("series_title",show.title);
@@ -153,6 +164,15 @@ public final class IptvPublisher {
                 values.put(TvContract.PreviewPrograms.COLUMN_SHORT_DESCRIPTION,
                     showCategory?show.count+" episodi · Apri per scegliere la puntata":
                     media.adult?"Richiede il PIN · Copertina neutra":media.group+" · Apri in Fuoconero IPTV");
+                if(hasProgress){
+                    values.put(TvContract.PreviewPrograms.COLUMN_DURATION_MILLIS,playback[1]);
+                    values.put(TvContract.PreviewPrograms.COLUMN_LAST_PLAYBACK_POSITION_MILLIS,playback[0]);
+                    values.put(TvContract.PreviewPrograms.COLUMN_SHORT_DESCRIPTION,
+                        "Riprendi · "+clock(playback[0])+" / "+clock(playback[1])+" · Fuoconero IPTV");
+                }else{
+                    values.putNull(TvContract.PreviewPrograms.COLUMN_DURATION_MILLIS);
+                    values.putNull(TvContract.PreviewPrograms.COLUMN_LAST_PLAYBACK_POSITION_MILLIS);
+                }
                 values.put(TvContract.PreviewPrograms.COLUMN_INTERNAL_PROVIDER_ID,internal);
                 values.put(TvContract.PreviewPrograms.COLUMN_CONTENT_ID,showCategory?"iptv:series:"+show.key:"iptv:"+media.id);
                 values.put(TvContract.PreviewPrograms.COLUMN_WEIGHT,1000-(order++));
@@ -182,6 +202,38 @@ public final class IptvPublisher {
         return "Projectivy: "+all+" anteprime pubblicate in "+groups+
             " categorie; area adulti protetta da PIN con copertine neutre.";
     }
+
+    private static String clock(long ms){
+        long s=Math.max(0,ms/1000L);
+        return s>=3600?String.format(java.util.Locale.ROOT,"%d:%02d:%02d",s/3600,s/60%60,s%60):
+            String.format(java.util.Locale.ROOT,"%02d:%02d",s/60,s%60);
+    }
+    private static File progressPoster(File original,long position,long duration)throws Exception{
+        Bitmap source=android.graphics.BitmapFactory.decodeFile(original.getAbsolutePath());
+        if(source==null)return original;
+        Bitmap b=source.copy(Bitmap.Config.ARGB_8888,true);source.recycle();
+        if(b==null)return original;
+        File result=new File(original.getParentFile(),original.getName().replace(".png","_progress.png"));
+        try{
+            int w=b.getWidth(),h=b.getHeight();Canvas canvas=new Canvas(b);Paint paint=new Paint(3);
+            paint.setColor(0xee101828);canvas.drawRect(0,h*0.81f,w,h,paint);
+            paint.setColor(Color.WHITE);paint.setTypeface(Typeface.create("sans-serif",Typeface.BOLD));
+            paint.setTextSize(w*0.061f);
+            canvas.drawText(String.format(java.util.Locale.ITALY,"%.1f%% visto",100.0*position/duration),w*0.06f,h*0.865f,paint);
+            paint.setTextSize(w*0.052f);
+            canvas.drawText(clock(position)+" / "+clock(duration),w*0.06f,h*0.925f,paint);
+            paint.setColor(0xff626977);float left=w*0.06f,right=w*0.94f,top=h*0.95f,bottom=h*0.97f;
+            canvas.drawRoundRect(left,top,right,bottom,6,6,paint);paint.setColor(0xffff843f);
+            canvas.drawRoundRect(left,top,left+(right-left)*(float)position/duration,bottom,6,6,paint);
+            File temp=new File(result.getParentFile(),result.getName()+".tmp");
+            try(FileOutputStream out=new FileOutputStream(temp)){
+                if(!b.compress(Bitmap.CompressFormat.PNG,90,out))throw new java.io.IOException("Poster encoding failed");
+            }
+            if(!temp.renameTo(result))throw new java.io.IOException("Poster save failed");
+            return result;
+        }finally{b.recycle();}
+    }
+
     private static File posterFile(Context ctx,long id){
         File dir=new File(ctx.getFilesDir(),"posters");
         if(!dir.isDirectory())dir.mkdirs();
