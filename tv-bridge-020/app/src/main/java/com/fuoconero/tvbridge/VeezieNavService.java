@@ -43,6 +43,7 @@ public class VeezieNavService extends AccessibilityService {
         super.onServiceConnected();
         getSharedPreferences(PREFS,MODE_PRIVATE).edit().putBoolean("service_seen",true).apply();
         queue();
+        handler.post(playbackObserver);
     }
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {
         if(event==null||event.getPackageName()==null)return;
@@ -55,6 +56,8 @@ public class VeezieNavService extends AccessibilityService {
                 ||event.getEventType()==AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
                 p.edit().putLong("last_veezie_event",now).apply();
             if(now<p.getLong("probe_until",0L)) samplePlayback(p,now);
+            handler.removeCallbacks(playbackObserver);
+            handler.post(playbackObserver);
             queue();
             return;
         }
@@ -70,6 +73,43 @@ public class VeezieNavService extends AccessibilityService {
             }
         }
     }
+
+    private long playbackLastScan=0;
+    private final Runnable playbackObserver=new Runnable(){
+        @Override public void run(){
+            AccessibilityNodeInfo root=getRootInActiveWindow();
+            if(root==null || root.getPackageName()==null || !"st.veezie".contentEquals(root.getPackageName()))return;
+            long now=SystemClock.elapsedRealtime();
+            if(now-playbackLastScan>=2000L){
+                playbackLastScan=now;
+                String title=playerText(root,"exo_title");
+                String position=playerText(root,"exo_position"),duration=playerText(root,"exo_duration");
+                String subtitle=playerText(root,"exo_subtitle");
+                // IDs observed on the actual Veezie 3.4.7 player: no clock ordering guesses.
+                if(!title.isEmpty() && isClock(position) && isClock(duration)){
+                    String season="",episode="";
+                    java.util.regex.Matcher m=java.util.regex.Pattern.compile("^([0-9]{1,3})x([0-9]{1,3})\\b.*")
+                        .matcher(subtitle);
+                    boolean valid=subtitle.isEmpty();
+                    if(m.matches()){
+                        season=String.valueOf(Integer.parseInt(m.group(1)));
+                        episode=String.valueOf(Integer.parseInt(m.group(2)));valid=true;
+                    }
+                    if(valid)TvSync.recordVeeziePlayback(getApplicationContext(),title,season,episode,
+                        clockSeconds(position)*1000L,clockSeconds(duration)*1000L);
+                }
+            }
+            handler.removeCallbacks(this);
+            handler.postDelayed(this,2000L);
+        }
+    };
+    private String playerText(AccessibilityNodeInfo root,String id){
+        java.util.List<AccessibilityNodeInfo> nodes=root.findAccessibilityNodeInfosByViewId("st.veezie:id/"+id);
+        if(nodes==null || nodes.size()!=1)return "";
+        AccessibilityNodeInfo node=nodes.get(0);
+        return node.isVisibleToUser() && node.getText()!=null?node.getText().toString().trim():"";
+    }
+
     /**
      * Explicit short-lived probe: reads only exposed playback slider metadata
      * while Veezie is in the foreground. No screen text or auth data stored.
@@ -177,6 +217,7 @@ public class VeezieNavService extends AccessibilityService {
     }
     @Override public void onInterrupt(){halt("Interrotto");}
     @Override public void onDestroy(){
+        handler.removeCallbacks(playbackObserver);
         halt("Servizio interrotto");
         super.onDestroy();
     }
