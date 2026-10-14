@@ -372,6 +372,16 @@ public class VeezieNavService extends AccessibilityService {
         return null;
     }
     private static AccessibilityNodeInfo findExactTitle(AccessibilityNodeInfo root,String title){
+        // Only choose results in the active search pane, never a home card behind it.
+        AccessibilityNodeInfo edit=findEdit(root);
+        if(edit==null)return null;
+        AccessibilityNodeInfo pane=edit.getParent();
+        for(int depth=0;depth<5 && pane!=null;depth++){
+            if(pane.isScrollable()){root=pane;break;}
+            AccessibilityNodeInfo parent=pane.getParent();
+            if(parent==null||"android.webkit.WebView".contentEquals(parent.getClassName())){root=pane;break;}
+            pane=parent;
+        }
         ArrayDeque<AccessibilityNodeInfo> stack=new ArrayDeque<>();
         stack.add(root);int checked=0;
         String expected=label(title);
