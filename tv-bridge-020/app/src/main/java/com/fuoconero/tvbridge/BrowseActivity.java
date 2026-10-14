@@ -19,6 +19,7 @@ public class BrowseActivity extends Activity {
     private ScrollView scroll;
     private TextView status;
     private final ExecutorService data=Executors.newSingleThreadExecutor();
+    private final ExecutorService reader=Executors.newSingleThreadExecutor();
     private final ExecutorService images=Executors.newFixedThreadPool(3);
     private final Handler handler=new Handler(Looper.getMainLooper());
     private boolean resumed=false,busy=false;
@@ -61,12 +62,15 @@ public class BrowseActivity extends Activity {
                 IptvPublisher.publish(this);RecentStore.publish(this);
                 SyncJob.schedule(this);IptvRefreshJob.schedule(this);EpgRefreshJob.schedule(this);
             }catch(Exception e){android.util.Log.w("Fuoconero043","Aggiornamento differito; dati locali conservati");}
-            runOnUiThread(()->{busy=false;status.setText("OK apre · tieni premuto OK per rimuovere dai recenti");load();});
+            runOnUiThread(()->{busy=false;status.setText("OK apre · tieni premuto OK per rimuovere dai recenti");load();
+                SharedPreferences p=getSharedPreferences("auto043",MODE_PRIVATE);
+                if(!p.getBoolean("visibility_requested",false)){TvSync.requestVisibility(this);p.edit().putBoolean("visibility_requested",true).apply();}
+            });
         });
     }
     private void load(){
         final int request=++generation;
-        data.execute(()->{
+        reader.execute(()->{
             ArrayList<Section> sections=new ArrayList<>();HashMap<Long,Section> channels=new HashMap<>();
             try(Cursor c=getContentResolver().query(TvContract.Channels.CONTENT_URI,
                 new String[]{"_id","display_name","package_name"},null,null,null)){
