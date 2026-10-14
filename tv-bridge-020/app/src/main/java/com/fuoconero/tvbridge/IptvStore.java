@@ -187,9 +187,9 @@ public final class IptvStore extends SQLiteOpenHelper {
         }
     }
     /**
-     * Live television: show only an explicitly labelled HD/FHD/UHD variant,
-     * one per named channel. SD, catch-up +1/+2/+3 and repeated providers
-     * never take a second slot in Projectivy or in the TV catalog.
+     * Live television: prefer an explicitly labelled HD/FHD/UHD variant,
+     * one per named channel. Keep a fallback if no HD exists, and preserve
+     * time-shift channels because their schedules are different.
      *
      * This only changes the presentation, never deletes original M3U rows.
      */
@@ -203,7 +203,8 @@ public final class IptvStore extends SQLiteOpenHelper {
     private static String canonicalLiveName(String original){
         String t=original.toUpperCase(Locale.ROOT);
         t=REMOVE_QUALITY.matcher(t).replaceAll(" ");
-        t=t.replaceAll("\\+\\s*[123]\\b"," ");
+        // Timeshift channels (+1/+2) have different schedules and remain separate.
+        t=t.replaceAll("\\+\\s*([0-9]+)\\b"," PLUS $1 ");
         t=t.replaceAll("[^A-Z0-9 ]"," ").replaceAll("\\s+"," ").trim();
         // DAZN 1 - SERIE B - ASCOLI is a temporary alternate feed, not a
         // separate permanent channel DAZN 1. Preserve DAZN 10 versus DAZN 1.
@@ -214,7 +215,7 @@ public final class IptvStore extends SQLiteOpenHelper {
     }
     private static int qualityScore(String title,String key){
         String u=title.toUpperCase(Locale.ROOT);
-        if(!HD_QUALITY.matcher(u).find())return -1; // no SD or unknown resolution
+        if(!HD_QUALITY.matcher(u).find())return u.matches(".*\\bSD\\b.*")?50:100; // fallback only when no HD variant exists
         int score=0;
         if(u.matches(".*\\bHD\\b.*")&&!u.matches(".*\\bFULL\\s*HD\\b.*"))score=600;
         else if(u.matches(".*\\b(?:FHD|FULL\\s*HD|1080P)\\b.*"))score=550;
@@ -297,6 +298,22 @@ public final class IptvStore extends SQLiteOpenHelper {
         return result;
     }
 
+    /** Presentation filter only: keep all original URLs, favourites and playback IDs. */
+    private String preferredLiveFilter(){
+        java.util.LinkedHashMap<String,Long> ids=new java.util.LinkedHashMap<>();
+        java.util.HashMap<String,Integer> scores=new java.util.HashMap<>();
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT id,title,adult FROM entries WHERE kind='TV' AND title NOT LIKE '---%' AND title NOT LIKE '-- %' ORDER BY id",null)){
+            while(c.moveToNext()){
+                String key=c.getInt(2)+":"+canonicalLiveName(c.getString(1));
+                int score=qualityScore(c.getString(1),canonicalLiveName(c.getString(1)));
+                if(!scores.containsKey(key)||score>scores.get(key)){ids.put(key,c.getLong(0));scores.put(key,score);}
+            }
+        }
+        StringBuilder clause=new StringBuilder("(kind<>'TV' OR id IN (-1");
+        for(long id:ids.values())clause.append(',').append(id);
+        return clause.append("))").toString();
+    }
+
     public ArrayList<Media> list(String category,String search,int offset,int limit){
         if(liveCategory(category))return uniqueHdLive(category,search,offset,limit);
         ArrayList<Media> result=new ArrayList<>();
@@ -324,6 +341,7 @@ public final class IptvStore extends SQLiteOpenHelper {
         }
         // Distinguish real TV channels from VOD; never surface category headers.
         query.append(" AND title NOT LIKE '---%' AND title NOT LIKE '-- %'");
+        query.append(" AND ").append(preferredLiveFilter());
         query.append(" ORDER BY id ASC LIMIT ? OFFSET ?");
         args.add(String.valueOf(Math.min(75,Math.max(1,limit))));
         args.add(String.valueOf(Math.max(0,offset)));
@@ -347,7 +365,7 @@ public final class IptvStore extends SQLiteOpenHelper {
             "SELECT id,title,grp,url,category,kind,adult,fav FROM entries "+
             "WHERE adult=0 AND NOT(category='Serie' AND kind='Video') "+
             "AND title NOT LIKE '---%' AND title NOT LIKE '-- %' "+
-            "AND title LIKE ? ESCAPE '\\' "+
+            "AND "+preferredLiveFilter()+" AND title LIKE ? ESCAPE '\\' "+
             "ORDER BY CASE WHEN lower(title)=lower(?) THEN 0 ELSE 1 END,title COLLATE NOCASE,id "+
             "LIMIT ? OFFSET ?",new String[]{"%"+safe+"%",term.trim(),
                 String.valueOf(Math.min(50,Math.max(1,limit))),String.valueOf(Math.max(0,offset))})){

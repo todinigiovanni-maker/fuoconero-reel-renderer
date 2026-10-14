@@ -211,6 +211,7 @@ public final class IptvPublisher {
                     ctx.getContentResolver().delete(
                         TvContract.buildPreviewProgramUri(existing.get(old)),null,null);
             }
+            RefreshActionCard.publish(ctx,id);
             groups++;
         }
         store.close();

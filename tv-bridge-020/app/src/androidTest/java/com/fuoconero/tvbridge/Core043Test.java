@@ -29,6 +29,22 @@ public class Core043Test {
         for(String n:new String[]{"recent043.db","epg043.db","fuoconero_iptv.db","fuoconero_library.db"})SQLiteDatabase.deleteDatabase(ctx.getDatabasePath(n));
         for(String n:new String[]{"tvbridge","epg","veezie_playback","tvbridge_next"})ctx.getSharedPreferences(n,0).edit().clear().commit();
     }
+    @Test public void liveVariantsAcrossCategoriesKeepHdAndVod()throws Exception{
+        try(IptvStore store=new IptvStore(ctx)){
+            String[] titles={"Cinema Uno SD","Cinema Uno H264","Cinema Uno HD","Cinema Uno FHD","Cinema Uno HD +1","Local SD","A Film SD","A Film HD"};
+            for(int n=0;n<titles.length;n++){
+                ContentValues v=new ContentValues();v.put("ident","variant"+n);v.put("title",titles[n]);v.put("grp","Film");v.put("url","https://example.invalid/"+n);v.put("category","Film");v.put("kind",n<6?"TV":"Video");v.put("adult",0);v.put("seen",1);v.put("first_seen",1);
+                store.getWritableDatabase().insertOrThrow("entries",null,v);
+            }
+            java.util.ArrayList<IptvStore.Media> rows=store.list("Film","",0,75);
+            assertEquals(5,rows.size());
+            assertEquals("Cinema Uno HD",rows.get(0).title);
+            assertEquals("Cinema Uno HD +1",rows.get(1).title);
+            assertEquals("Local SD",rows.get(2).title);
+            assertEquals(2,store.searchMedia("Cinema Uno",0,50).size());
+            assertEquals(8,store.count());
+        }
+    }
     @Test public void xmltvTimezoneAndInvalidDate()throws Exception{
         assertEquals(EpgStore.parseTime("20261014120000 +0200"),EpgStore.parseTime("20261014100000 +0000"));
         assertEquals(EpgStore.parseTime("20261014100000"),EpgStore.parseTime("20261014100000 +0000"));
