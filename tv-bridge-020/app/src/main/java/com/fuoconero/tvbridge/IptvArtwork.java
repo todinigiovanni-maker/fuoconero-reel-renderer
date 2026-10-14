@@ -13,6 +13,34 @@ import java.util.regex.*;
 public final class IptvArtwork {
     private final HashMap<Long,String> images=new HashMap<>();
     private static final Pattern LOGO=Pattern.compile("(?:^|\\s)tvg-logo=\"([^\"]*)\"");
+    public static void backfillEpgIds(Context ctx){
+        android.content.SharedPreferences p=ctx.getSharedPreferences(IptvStore.PREFS,Context.MODE_PRIVATE);
+        long imported=p.getLong("last_success",0);
+        if(imported<=0||p.getLong("tvg_backfill_at",0)>=imported)return;
+        Pattern id=Pattern.compile("(?:^|\\s)tvg-id=\"([^\"]*)\"");
+        try(IptvStore store=new IptvStore(ctx)){
+            HashMap<String,ArrayList<Long>> wanted=new HashMap<>();
+            try(android.database.Cursor c=store.getReadableDatabase().rawQuery("SELECT id,url FROM entries WHERE kind='TV' AND adult=0 AND tvg_id=''",null)){
+                while(c.moveToNext())wanted.computeIfAbsent(c.getString(1),k->new ArrayList<>()).add(c.getLong(0));
+            }
+            String path=p.getString("source_path",""),uri=p.getString("source_uri","");
+            InputStream input=!path.isEmpty()?new FileInputStream(path):!uri.isEmpty()?ctx.getContentResolver().openInputStream(Uri.parse(uri)):null;
+            if(input==null)return;
+            try(BufferedReader reader=new BufferedReader(new InputStreamReader(input,"UTF-8"),65536)){
+                String line,tvg="";
+                while((line=reader.readLine())!=null&&!wanted.isEmpty()){
+                    if(line.startsWith("#EXTINF:")){Matcher m=id.matcher(line);tvg=m.find()?m.group(1).trim():"";}
+                    else if(!line.startsWith("#")){
+                        ArrayList<Long> keys=wanted.remove(line.trim());
+                        if(keys!=null&&!tvg.isEmpty()&&tvg.length()<=200)for(Long key:keys)
+                            store.getWritableDatabase().execSQL("UPDATE entries SET tvg_id=? WHERE id=?",new Object[]{tvg,key});
+                        tvg="";
+                    }
+                }
+            }
+            p.edit().putLong("tvg_backfill_at",System.currentTimeMillis()).apply();
+        }catch(Exception e){android.util.Log.w("Fuoconero043","Identificativi EPG non ancora disponibili");}
+    }
     public IptvArtwork(Context ctx,IptvStore store){
         HashMap<String,ArrayList<Long>> wanted=new HashMap<>();
         try{
