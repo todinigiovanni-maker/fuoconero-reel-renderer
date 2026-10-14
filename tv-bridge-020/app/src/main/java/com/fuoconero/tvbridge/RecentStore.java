@@ -178,7 +178,9 @@ public final class RecentStore extends SQLiteOpenHelper {
                 if(season!=null&&season.matches("[0-9]{1,3}"))v.put("season_display_number",season);
                 if(episode!=null&&episode.matches("[0-9]{1,3}"))v.put("episode_display_number",episode);
             }
-            if(e.duration>0){v.put("duration_millis",e.duration);v.put("last_playback_position_millis",e.position);}
+            // Projectivy overlays an inconsistent native bar on preview programmes.
+            // The artwork already contains the exact measured playback percentage.
+            if(e.duration>0){v.put("duration_millis",e.duration);v.putNull("last_playback_position_millis");}
             else{v.putNull("duration_millis");v.putNull("last_playback_position_millis");}
             Long previous=old.get(key);
             if(previous!=null){v.remove("channel_id");c.getContentResolver().update(TvContract.buildPreviewProgramUri(previous),v,null,null);}

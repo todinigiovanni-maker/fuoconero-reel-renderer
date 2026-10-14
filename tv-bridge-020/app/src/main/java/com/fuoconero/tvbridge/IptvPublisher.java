@@ -180,7 +180,7 @@ public final class IptvPublisher {
                     media.adult?"Richiede il PIN · Copertina neutra":media.group+" · Apri in Fuoconero IPTV");
                 if(hasProgress){
                     values.put(TvContract.PreviewPrograms.COLUMN_DURATION_MILLIS,playback[1]);
-                    values.put(TvContract.PreviewPrograms.COLUMN_LAST_PLAYBACK_POSITION_MILLIS,playback[0]);
+                    values.putNull(TvContract.PreviewPrograms.COLUMN_LAST_PLAYBACK_POSITION_MILLIS);
                     values.put(TvContract.PreviewPrograms.COLUMN_SHORT_DESCRIPTION,
                         "Riprendi · "+clock(playback[0])+" / "+clock(playback[1])+" · Fuoconero IPTV");
                 }else{
