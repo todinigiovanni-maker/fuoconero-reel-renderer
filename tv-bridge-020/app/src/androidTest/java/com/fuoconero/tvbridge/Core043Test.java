@@ -27,7 +27,7 @@ public class Core043Test {
             @Override public SharedPreferences getSharedPreferences(String n,int mode){return super.getSharedPreferences("test043_"+n,mode);}
         };
         for(String n:new String[]{"recent043.db","epg043.db","fuoconero_iptv.db","fuoconero_library.db"})SQLiteDatabase.deleteDatabase(ctx.getDatabasePath(n));
-        for(String n:new String[]{"tvbridge","epg","veezie_playback","tvbridge_next"})ctx.getSharedPreferences(n,0).edit().clear().commit();
+        for(String n:new String[]{"tvbridge","epg","veezie_playback","tvbridge_next","iptv_settings"})ctx.getSharedPreferences(n,0).edit().clear().commit();
     }
     @Test public void liveVariantsAcrossCategoriesKeepHdAndVod()throws Exception{
         try(IptvStore store=new IptvStore(ctx)){
@@ -116,6 +116,19 @@ public class Core043Test {
             assertEquals(1,store.list(20).size());assertEquals("iptv_1",store.list(20).get(0).key);
             a.identity="movie:tmdb:2";a.at=3000;store.save(a);assertEquals(2,store.list(20).size());
             store.remove("iptv_1");b.key="another_source";store.save(b);assertEquals(1,store.list(20).size());
+        }
+    }
+    @Test public void onlineGroupsPreserveExistingIdsAndExcludeUnselected()throws Exception{
+        String header="#EXTM3U\n",item="#EXTINF:-1 group-title=\"TV Italia\",RAI 1 HD\nhttps://example.invalid/live/u/p/1.ts\n";
+        try(IptvStore store=new IptvStore(ctx)){
+            store.importPlaylist(ctx,new ByteArrayInputStream((header+item).getBytes(StandardCharsets.UTF_8)),null);
+            long id=store.list("TV Italia","",0,1).get(0).id;store.toggleFavorite(id);
+            ctx.getSharedPreferences(IptvStore.PREFS,0).edit().putString("source_group_categories","{\"Top Italia\":\"TV Italia\"}").commit();
+            String online=header+item.replace("TV Italia","Top Italia")+
+                "#EXTINF:-1 group-title=\"Foreign\",OTHER HD\nhttps://example.invalid/live/u/p/2.ts\n"+
+                "#EXTINF:-1 group-title=\"Top Italia\",RAI 2 HD\nhttps://example.invalid/live/u/p/3.ts\n";
+            store.importPlaylist(ctx,new ByteArrayInputStream(online.getBytes(StandardCharsets.UTF_8)),null);
+            assertEquals(2,store.count());assertEquals(id,store.list("TV Italia","",0,1).get(0).id);assertTrue(store.find(id).fav);
         }
     }
     @Test public void m3uIdentifiersAndFavouriteSurviveRefresh()throws Exception{

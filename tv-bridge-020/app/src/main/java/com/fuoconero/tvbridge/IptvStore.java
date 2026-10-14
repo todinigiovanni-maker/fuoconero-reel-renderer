@@ -110,6 +110,9 @@ public final class IptvStore extends SQLiteOpenHelper {
     public String importPlaylist(Context context,InputStream input,Progress progress)throws Exception{
         SharedPreferences prefs=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
         long now=System.currentTimeMillis(),count=0;
+        org.json.JSONObject sourceGroups;
+        try{sourceGroups=new org.json.JSONObject(prefs.getString("source_group_categories","{}"));}
+        catch(org.json.JSONException e){throw new IOException("Filtro gruppi non valido; catalogo conservato");}
         SQLiteDatabase db=getWritableDatabase();
         long prev=prefs.getLong("successful_imports",0);
         // Reusing the existing row ID keeps Projectivy Intent IDs and favorites
@@ -119,6 +122,7 @@ public final class IptvStore extends SQLiteOpenHelper {
         db.beginTransactionNonExclusive();
         try(BufferedReader reader=new BufferedReader(new InputStreamReader(input,StandardCharsets.UTF_8),65536)){
             SQLiteStatement put=db.compileStatement(sql);
+            SQLiteStatement touch=db.compileStatement("UPDATE entries SET seen=?,tvg_id=? WHERE ident=?");
             String line,info=null;
             while((line=reader.readLine())!=null){
                 if(Thread.currentThread().isInterrupted())throw new IOException("Importazione interrotta");
@@ -129,16 +133,26 @@ public final class IptvStore extends SQLiteOpenHelper {
                     if(!(url.startsWith("https://")||url.startsWith("http://"))||
                         url.length()>2048){info=null;continue;}
                     String grp=clean(attr(GROUP,info),180);
+                    String selectedCategory=sourceGroups.optString(grp,"");
+                    if(sourceGroups.length()>0 && selectedCategory.isEmpty()){info=null;continue;}
                     int comma=info.lastIndexOf(',');
                     String title=comma>=0?info.substring(comma+1):attr(NAME,info);
                     title=clean(title,200);
                     if(title.length()<2){info=null;continue;}
                     boolean adult=isAdult(grp,title);
                     String category=classify(grp,title,adult,url);
+                    if(!selectedCategory.isEmpty()){
+                        category=adult?"Adulti":selectedCategory;
+                        // Match the normalized groups of the previous local playlist.
+                        grp=category;
+                    }
                     String kind=url.toLowerCase(Locale.ROOT).contains("/movie/")?"Film":
                         url.toLowerCase(Locale.ROOT).contains("/series/")?"Video":
                         "TV";
                     String ident=identity(title,grp,url);
+                    String tvgId=clean(attr(TVG_ID,info),200);
+                    touch.clearBindings();touch.bindLong(1,now);touch.bindString(2,tvgId);touch.bindString(3,ident);
+                    if(touch.executeUpdateDelete()==0){
                     put.clearBindings();
                     put.bindString(1,ident);
                     put.bindString(2,ident);
@@ -152,8 +166,9 @@ public final class IptvStore extends SQLiteOpenHelper {
                     put.bindString(10,ident);
                     put.bindLong(11,now);
                     put.bindString(12,ident);
-                    put.bindString(13,clean(attr(TVG_ID,info),200));
+                    put.bindString(13,tvgId);
                     put.executeInsert();
+                    }
                     count++;
                     info=null;
                     if(count>400000)throw new IOException("La lista supera il limite di 400.000 voci");

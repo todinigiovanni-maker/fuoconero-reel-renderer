@@ -24,7 +24,7 @@ public class ManualRefreshJob extends JobService {
                 status(this,"Aggiorno il catalogo IPTV e le locandine…");
                 SharedPreferences iptv=getSharedPreferences(IptvStore.PREFS,MODE_PRIVATE);
                 boolean configured=!iptv.getString("source_path","").isEmpty()||!iptv.getString("source_uri","").isEmpty()||!iptv.getString("source_url","").isEmpty();
-                if(configured)try{IptvRefreshJob.update(this,m->{});IptvMetadata.refreshNow(this);}catch(Exception e){errors.add("catalogo IPTV");}
+                if(configured)try{IptvRefreshJob.update(this,m->status(this,m));IptvMetadata.refreshNow(this);}catch(Exception e){errors.add("catalogo IPTV");}
                 status(this,"Aggiorno la guida TV…");
                 try{EpgRefreshJob.configureFromPlaylist(this);EpgRefreshJob.refresh(this);}catch(Exception e){errors.add("guida TV");}
                 status(this,"Aggiorno le card della home…");
