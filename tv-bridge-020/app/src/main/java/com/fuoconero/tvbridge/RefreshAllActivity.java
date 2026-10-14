@@ -10,7 +10,11 @@ public class RefreshAllActivity extends Activity {
         TextView title=new TextView(this);title.setText("Aggiorna tutto");title.setTextSize(32);box.addView(title);
         status=new TextView(this);status.setTextSize(22);box.addView(status);
         TextView note=new TextView(this);note.setText("Puoi tornare alla home: l’aggiornamento continua in background.");note.setTextSize(18);box.addView(note);
-        Button back=new Button(this);back.setText("Torna alla home");back.setOnClickListener(w->finish());box.addView(back);setContentView(box);back.requestFocus();
+        Button back=new Button(this);back.setText("Torna alla home");back.setOnClickListener(w->{
+            try{startActivity(new android.content.Intent().setComponent(new android.content.ComponentName("com.spocky.projengmenu","com.spocky.projengmenu.ui.home.MainActivity")).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));}
+            catch(android.content.ActivityNotFoundException ignored){}
+            finish();
+        });box.addView(back);setContentView(box);back.requestFocus();
         ManualRefreshJob.request(this);
     }
     @Override protected void onResume(){super.onResume();handler.post(tick);}
