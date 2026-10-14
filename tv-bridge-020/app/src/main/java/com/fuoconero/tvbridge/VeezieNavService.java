@@ -231,11 +231,13 @@ public class VeezieNavService extends AccessibilityService {
                 if(close!=null&&click(close)){lastAction=now;attempts=0;return;}
                 String[] typeLabels=season.matches("[0-9]{1,3}")?
                     new String[]{"serie tv","tv series"}:new String[]{"film","movies"};
-                AccessibilityNodeInfo type=findLabel(root,typeLabels,true,false);
+                AccessibilityNodeInfo typePrompt=findLabel(root,new String[]{"cosa vuoi cercare?"},true,false);
+                AccessibilityNodeInfo type=typePrompt==null?null:findPromptControl(typePrompt,typeLabels);
                 if(type!=null&&click(type)){
                     stage=1;lastAction=now;attempts=0;setStatus("Tipo contenuto selezionato");return;
                 }
-                AccessibilityNodeInfo global=findLabel(root,new String[]{"ricerca globale","global search"},true,false);
+                AccessibilityNodeInfo globalPrompt=findLabel(root,new String[]{"dove vuoi cercare?"},true,false);
+                AccessibilityNodeInfo global=globalPrompt==null?null:findPromptControl(globalPrompt,new String[]{"ricerca globale","global search"});
                 if(global!=null&&click(global)){
                     stage=1;lastAction=now;attempts=0;setStatus("Ricerca globale selezionata");return;
                 }
@@ -315,6 +317,16 @@ public class VeezieNavService extends AccessibilityService {
         getSharedPreferences(PREFS,MODE_PRIVATE).edit().putString("result",status).apply();
     }
 
+    private static AccessibilityNodeInfo findPromptControl(AccessibilityNodeInfo prompt,String[] labels){
+        AccessibilityNodeInfo parent=prompt.getParent();
+        for(int i=0;i<3&&parent!=null;i++){
+            if("android.webkit.WebView".contentEquals(parent.getClassName()))break;
+            AccessibilityNodeInfo control=findLabel(parent,labels,true,false);
+            if(control!=null)return control;
+            parent=parent.getParent();
+        }
+        return null;
+    }
     private static String label(CharSequence value){
         if(value==null)return "";
         return value.toString().replaceAll("[\\p{Co}\\p{So}\\p{Cntrl}]"," ")
