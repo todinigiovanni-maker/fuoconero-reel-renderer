@@ -940,11 +940,10 @@ public final class TvSync {
                 File image=new File(new File(app.getFilesDir(),"posters"),match.id+"_progress.png");
                 ContentValues values=new ContentValues();
                 values.put(TvContract.PreviewPrograms.COLUMN_DURATION_MILLIS,duration);
-                values.put(TvContract.PreviewPrograms.COLUMN_LAST_PLAYBACK_POSITION_MILLIS,position);
+                values.putNull(TvContract.PreviewPrograms.COLUMN_LAST_PLAYBACK_POSITION_MILLIS);
                 values.put(TvContract.PreviewPrograms.COLUMN_SHORT_DESCRIPTION,match.description);
-                values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_URI,new Uri.Builder().scheme("content")
-                    .authority("com.fuoconero.tvbridge.test037.images").appendPath("posters")
-                    .appendPath(image.getName()).appendQueryParameter("v",String.valueOf(image.lastModified())).build().toString());
+                values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_URI,landscapePoster(app,match));
+                values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_ASPECT_RATIO,TvContract.PreviewPrograms.ASPECT_RATIO_16_9);
                 if(series){
                     values.put(TvContract.PreviewPrograms.COLUMN_SEASON_DISPLAY_NUMBER,season);
                     values.put(TvContract.PreviewPrograms.COLUMN_EPISODE_DISPLAY_NUMBER,episode);
@@ -1068,6 +1067,13 @@ public final class TvSync {
         logo.recycle();
         return id;
     }
+    private static String landscapePoster(Context c,Item item)throws Exception {
+        File original=new File(new File(c.getFilesDir(),"posters"),item.id+".png");
+        String source=new Uri.Builder().scheme("content").authority(c.getPackageName()+".images")
+            .appendPath("posters").appendPath(original.getName()).build().toString();
+        if(!original.isFile()&&!item.importedPosterUri.isEmpty())source=item.importedPosterUri;
+        return WideArtwork.render(c,item.id,item.title,item.description,source,item.progress,item.progressSource);
+    }
     private static void updateCards(Context c,long channel,ArrayList<Item> cards,boolean complete)throws Exception {
         Map<String,Long> existing=new HashMap<>();
         ArrayList<Long> duplicates=new ArrayList<>();
@@ -1148,8 +1154,10 @@ public final class TvSync {
                     .appendPath("posters").appendPath(imageName)
                     .appendQueryParameter("v",String.valueOf(imageFile.lastModified())).build();
             }
-            values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_URI,poster.toString());
-            values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_ASPECT_RATIO,TvContract.PreviewPrograms.ASPECT_RATIO_2_3);
+            values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_URI,landscapePoster(c,item));
+            values.put(TvContract.PreviewPrograms.COLUMN_POSTER_ART_ASPECT_RATIO,TvContract.PreviewPrograms.ASPECT_RATIO_16_9);
+            // The measured progress is drawn in the artwork; avoid Projectivy's second native bar.
+            values.putNull(TvContract.PreviewPrograms.COLUMN_LAST_PLAYBACK_POSITION_MILLIS);
             Intent intent=new Intent(c,OpenContentActivity.class);
             intent.setAction(Intent.ACTION_VIEW);
             intent.setData(new Uri.Builder().scheme("fuoconero-tv").authority("item")
@@ -1187,3 +1195,4 @@ public final class TvSync {
         p.edit().remove("channel_id").apply();
     }
 }
+
