@@ -227,11 +227,14 @@ public final class IptvPublisher {
             String.format(java.util.Locale.ROOT,"%02d:%02d",s/60,s%60);
     }
     private static File progressPoster(File original,long position,long duration)throws Exception{
+        File result=new File(original.getParentFile(),original.getName().replace(".png","_progress.png"));
+        File key=new File(result.getPath()+".key");
+        String signature="progress-v1:"+original.lastModified()+":"+original.length()+":"+position+":"+duration;
+        if(result.isFile()&&result.length()>0&&key.isFile()&&signature.equals(new String(java.nio.file.Files.readAllBytes(key.toPath()),java.nio.charset.StandardCharsets.UTF_8)))return result;
         Bitmap source=android.graphics.BitmapFactory.decodeFile(original.getAbsolutePath());
         if(source==null)return original;
         Bitmap b=source.copy(Bitmap.Config.ARGB_8888,true);source.recycle();
         if(b==null)return original;
-        File result=new File(original.getParentFile(),original.getName().replace(".png","_progress.png"));
         try{
             int w=b.getWidth(),h=b.getHeight();Canvas canvas=new Canvas(b);Paint paint=new Paint(3);
             paint.setColor(0xee101828);canvas.drawRect(0,h*0.81f,w,h,paint);
@@ -248,6 +251,7 @@ public final class IptvPublisher {
                 if(!b.compress(Bitmap.CompressFormat.PNG,90,out))throw new java.io.IOException("Poster encoding failed");
             }
             if(!temp.renameTo(result))throw new java.io.IOException("Poster save failed");
+            java.nio.file.Files.write(key.toPath(),signature.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             return result;
         }finally{b.recycle();}
     }
@@ -289,4 +293,3 @@ public final class IptvPublisher {
         return b;
     }
 }
-

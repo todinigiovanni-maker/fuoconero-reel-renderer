@@ -15,10 +15,26 @@ public final class WideArtwork {
         return s>=3600?String.format(Locale.ROOT,"%d:%02d:%02d",s/3600,s/60%60,s%60):
             String.format(Locale.ROOT,"%02d:%02d",s/60,s%60);
     }
-    public static String render(Context c,String id,String title,String description,String source,double percent,String label)throws Exception{
+    public static synchronized String render(Context c,String id,String title,String description,String source,double percent,String label)throws Exception{
         String safe=id.replaceAll("[^a-zA-Z0-9_-]","_");if(safe.length()>70)safe=safe.substring(0,70);
         File folder=new File(c.getFilesDir(),"posters");folder.mkdirs();
         File out=new File(folder,"wide_"+safe+".png");
+        String revision="";boolean cacheable=source==null||source.isEmpty();
+        if(!cacheable){
+            Uri uri=Uri.parse(source);
+            if("content".equals(uri.getScheme())&&(c.getPackageName()+".images").equals(uri.getAuthority())&&uri.getPathSegments().size()==2&&"posters".equals(uri.getPathSegments().get(0))){
+                File original=new File(folder,uri.getLastPathSegment());
+                if(original.getCanonicalFile().getParentFile().equals(folder.getCanonicalFile())&&original.isFile()){
+                    revision=original.lastModified()+":"+original.length();cacheable=true;
+                }
+            }
+            // Unversioned external sources are deliberately retried, never frozen in cache.
+        }
+        String signature=new org.json.JSONArray().put("wide-v1").put(id).put(title).put(description)
+            .put(source).put(revision).put(String.valueOf(percent)).put(label).toString();
+        File key=new File(folder,out.getName()+".key");
+        if(cacheable&&out.isFile()&&out.length()>0&&key.isFile()&&signature.equals(new String(java.nio.file.Files.readAllBytes(key.toPath()),java.nio.charset.StandardCharsets.UTF_8)))
+            return RecentStore.image(c,out.getName());
         Bitmap b=Bitmap.createBitmap(960,540,Bitmap.Config.ARGB_8888),image=null;
         try{
             Canvas canvas=new Canvas(b);canvas.drawColor(0xff101115);
@@ -51,6 +67,9 @@ public final class WideArtwork {
             File temp=new File(folder,out.getName()+".tmp");
             try(FileOutputStream stream=new FileOutputStream(temp)){if(!b.compress(Bitmap.CompressFormat.PNG,95,stream))throw new IOException("Image encoding");}
             if(!temp.renameTo(out))throw new IOException("Image save");
+            if(cacheable&&((source==null||source.isEmpty())||image!=null))
+                java.nio.file.Files.write(key.toPath(),signature.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            else if(key.exists())key.delete();
             return RecentStore.image(c,out.getName());
         }finally{b.recycle();if(image!=null)image.recycle();}
     }
@@ -60,4 +79,3 @@ public final class WideArtwork {
         c.save();c.translate(x,y);layout.draw(c);c.restore();
     }
 }
-

@@ -33,9 +33,8 @@ public final class RefreshActionCard {
         values.put("title","Aggiorna tutto");values.put("short_description",summary(c));values.put("weight",2000);
         values.put("type",TvContract.PreviewPrograms.TYPE_CHANNEL);values.put("intent_uri",i.toUri(Intent.URI_INTENT_SCHEME));
         values.put("poster_art_aspect_ratio",TvContract.PreviewPrograms.ASPECT_RATIO_16_9);
-        values.put("poster_art_uri",android.net.Uri.parse(WideArtwork.render(c,"refresh_all","↻ Aggiorna tutto",summary(c),"",-1,"AUTOMATICO OGNI ORA · AGGIORNA ORA")).buildUpon().appendQueryParameter("v",String.valueOf(System.currentTimeMillis())).build().toString());
+        values.put("poster_art_uri",WideArtwork.render(c,"refresh_all","↻ Aggiorna tutto",summary(c),"",-1,"AUTOMATICO OGNI ORA · AGGIORNA ORA"));
         if(existing==null)c.getContentResolver().insert(TvContract.PreviewPrograms.CONTENT_URI,values);
         else{values.remove("channel_id");c.getContentResolver().update(TvContract.buildPreviewProgramUri(existing),values,null,null);}
     }
 }
-

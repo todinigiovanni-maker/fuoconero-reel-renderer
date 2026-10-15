@@ -14,6 +14,42 @@ import org.json.JSONObject;
 
 /** Real Android SQLite/XML parser tests, isolated from the user's databases. */
 public class Core043Test {
+    private File testPoster(String name,int color)throws Exception{
+        File f=new File(ctx.getFilesDir(),"posters/"+name);f.getParentFile().mkdirs();
+        android.graphics.Bitmap b=android.graphics.Bitmap.createBitmap(32,48,android.graphics.Bitmap.Config.ARGB_8888);b.eraseColor(color);
+        try(FileOutputStream out=new FileOutputStream(f)){assertTrue(b.compress(android.graphics.Bitmap.CompressFormat.PNG,90,out));}finally{b.recycle();}
+        return f;
+    }
+    @Test public void wideArtworkReusesIdenticalCardsAndInvalidatesChanges()throws Exception{
+        String id="test_cache_"+System.nanoTime();File source=testPoster(id+"_source.png",android.graphics.Color.RED);
+        String uri=RecentStore.image(ctx,source.getName());File out=new File(ctx.getFilesDir(),"posters/wide_"+id+".png");
+        try{
+            WideArtwork.render(ctx,id,"Title","Description",uri,10,"Label");
+            long marker=946684800000L;assertTrue(out.setLastModified(marker));marker=out.lastModified();
+            String cached=WideArtwork.render(ctx,id,"Title","Description",uri,10,"Label");
+            assertEquals(marker,out.lastModified());assertEquals(RecentStore.image(ctx,out.getName()),cached);
+            String[][] changes={{"New title","Description","10","Label"},{"Title","New description","10","Label"},{"Title","Description","20","Label"},{"Title","Description","10","New label"}};
+            for(String[] a:changes){
+                assertTrue(out.setLastModified(marker));WideArtwork.render(ctx,id,a[0],a[1],uri,Double.parseDouble(a[2]),a[3]);assertTrue(out.lastModified()>marker);
+                WideArtwork.render(ctx,id,"Title","Description",uri,10,"Label");
+            }
+            assertTrue(out.setLastModified(marker));assertTrue(source.setLastModified(marker));
+            WideArtwork.render(ctx,id,"Title","Description",uri,10,"Label");assertTrue(out.lastModified()>marker);
+            assertTrue(out.delete());WideArtwork.render(ctx,id,"Title","Description",uri,10,"Label");assertTrue(out.length()>0);
+        }finally{source.delete();out.delete();new File(out.getPath()+".key").delete();}
+    }
+    @Test public void progressArtworkReusesAndRefreshesPosition()throws Exception{
+        File original=testPoster("test_progress_"+System.nanoTime()+".png",android.graphics.Color.BLUE);
+        Method method=IptvPublisher.class.getDeclaredMethod("progressPoster",File.class,long.class,long.class);method.setAccessible(true);
+        File out=(File)method.invoke(null,original,100L,1000L);
+        try{
+            assertTrue(out.setLastModified(946684800000L));long marker=out.lastModified();
+            assertEquals(out,method.invoke(null,original,100L,1000L));assertEquals(marker,out.lastModified());
+            method.invoke(null,original,200L,1000L);assertTrue(out.lastModified()>marker);
+            assertTrue(out.setLastModified(marker));assertTrue(original.setLastModified(marker));
+            method.invoke(null,original,200L,1000L);assertTrue(out.lastModified()>marker);
+        }finally{original.delete();out.delete();new File(out.getPath()+".key").delete();}
+    }
     @Test public void channelMoveFollowsHttpsAndRejectsUnrelatedCards()throws Exception{
         assertEquals("https://new.example.org/",VeezieNews.redirect("https://old.example.org/","https://new.example.org/"));
         assertEquals("https://old.example.org/new/",VeezieNews.redirect("https://old.example.org/","/new/"));
