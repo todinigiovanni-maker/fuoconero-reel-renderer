@@ -30,6 +30,7 @@ public class HomeRefreshJob extends JobService {
         if(!BUSY.compareAndSet(false,true))return false;
         new Thread(()->{try{
             long now=System.currentTimeMillis();
+            VeezieNews.refresh(this,false);
             SharedPreferences attempts=getSharedPreferences("auto043",MODE_PRIVATE);
             if(now-attempts.getLong("bridge037_attempt",0)>=PERIOD){
                 sendBroadcast(new Intent("com.fuoconero.tvbridge.REFRESH_ALL").setComponent(new ComponentName("com.fuoconero.tvbridge.test037","com.fuoconero.tvbridge.RefreshReceiver")));

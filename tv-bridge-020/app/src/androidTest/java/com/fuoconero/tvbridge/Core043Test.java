@@ -14,6 +14,15 @@ import org.json.JSONObject;
 
 /** Real Android SQLite/XML parser tests, isolated from the user's databases. */
 public class Core043Test {
+    @Test public void channelNewsParsesOnlyExpectedCardsAndDeduplicates(){
+        String cb="<div class=\"card mp-post horizontal\"><img src=\"https://cb01uno.vip/a.jpg\"><h3 class=\"card-title\"><a href=\"https://cb01uno.vip/test/\">L&#8217;amore [HD] (2026)</a></h3>";
+        java.util.ArrayList<VeezieNews.Item> movies=VeezieNews.parse(cb+cb,false);
+        assertEquals(1,movies.size());assertEquals("L’amore (2026)",movies.get(0).title);assertFalse(movies.get(0).series);
+        String euro="<li id=\"post-1\"><img src=\"https://eurostream.pics/a.png\"><h2><a href=\"https://eurostream.pics/test/\">Test Series</a></h2></li>";
+        assertEquals(1,VeezieNews.parse(euro,true).size());assertTrue(VeezieNews.parse(euro,true).get(0).series);
+        assertTrue(VeezieNews.parse(euro.replace("https://eurostream.pics/test/","https://unrelated.invalid/test/"),true).isEmpty());
+        assertTrue(VeezieNews.parse("<html>Service temporarily unavailable</html>",true).isEmpty());
+    }
     @Test public void hourlyRefreshReplacesLegacySchedules(){
         Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();
         android.app.job.JobScheduler s=(android.app.job.JobScheduler)c.getSystemService(Context.JOB_SCHEDULER_SERVICE);

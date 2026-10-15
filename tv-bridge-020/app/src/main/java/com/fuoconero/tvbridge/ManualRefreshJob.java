@@ -18,6 +18,7 @@ public class ManualRefreshJob extends JobService {
         new Thread(()->{
             ArrayList<String> errors=new ArrayList<>();
             try{
+                status(this,"Aggiorno le novita CB01 ed Eurostreaming...");VeezieNews.refresh(this,true);
                 status(this,"Aggiorno Veezie/Trakt e le prossime puntate…");
                 sendBroadcast(new Intent("com.fuoconero.tvbridge.REFRESH_ALL").setComponent(new ComponentName("com.fuoconero.tvbridge.test037","com.fuoconero.tvbridge.RefreshReceiver")));
                 if(!getSharedPreferences("trakt",MODE_PRIVATE).getString("access_token","").isEmpty())try{TvSync.perform(this,m->{});}catch(Exception e){errors.add("Veezie/Trakt");}
