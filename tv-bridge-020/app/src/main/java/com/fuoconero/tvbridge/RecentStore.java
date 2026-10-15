@@ -153,7 +153,7 @@ public final class RecentStore extends SQLiteOpenHelper {
         try(Cursor cur=c.getContentResolver().query(TvContract.PreviewPrograms.CONTENT_URI,new String[]{"_id","channel_id","internal_provider_id"},null,null,null)){
             if(cur!=null)while(cur.moveToNext())if(cur.getLong(1)==channel)old.put(cur.getString(2),cur.getLong(0));
         }
-        Set<String> retained=new HashSet<>();retained.add(RefreshActionCard.KEY);int order=0;
+        Set<String> retained=new HashSet<>();retained.add(RefreshActionCard.KEY);retained.add(HiddenHome.ACTION);int order=0;
         for(Entry e:rows){
             String key="fuoconero:"+e.key;
             Intent intent=Intent.parseUri(e.intent,Intent.URI_INTENT_SCHEME);
@@ -183,12 +183,11 @@ public final class RecentStore extends SQLiteOpenHelper {
             if(e.duration>0){v.put("duration_millis",e.duration);v.putNull("last_playback_position_millis");}
             else{v.putNull("duration_millis");v.putNull("last_playback_position_millis");}
             Long previous=old.get(key);
-            if(previous!=null){v.remove("channel_id");c.getContentResolver().update(TvContract.buildPreviewProgramUri(previous),v,null,null);}
-            else c.getContentResolver().insert(TvContract.PreviewPrograms.CONTENT_URI,v);
+            HiddenHome.write(c,v,previous);
         }
         for(Map.Entry<String,Long> e:old.entrySet())if(!retained.contains(e.getKey()))
             c.getContentResolver().delete(TvContract.buildPreviewProgramUri(e.getValue()),null,null);
         RefreshActionCard.publish(c,channel);
+        HiddenHome.publishAction(c,channel);
     }
 }
-

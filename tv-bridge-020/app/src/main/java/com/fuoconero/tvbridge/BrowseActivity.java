@@ -41,6 +41,7 @@ public class BrowseActivity extends Activity {
         action(toolbar,"Guida TV",()->startActivity(new Intent(this,EpgActivity.class)));
         action(toolbar,"Impostazioni",()->startActivity(new Intent(this,MainActivity.class)));
         action(toolbar,"Aggiorna",this::refresh);
+        action(toolbar,"Gestisci home",()->startActivity(new Intent(this,HiddenHomeActivity.class)));
         status=heading(root,"Carico le schede...",17,0xffc9cbd3);
         rows=new LinearLayout(this);rows.setOrientation(1);root.addView(rows);
         refresh();HomeRefreshJob.schedule(this);HomeRefreshJob.request(this);
@@ -96,7 +97,7 @@ public class BrowseActivity extends Activity {
             long recent=getSharedPreferences("tvbridge",MODE_PRIVATE).getLong("channel_id",-1);
             sections.sort((a,b)->a.id==b.id?0:a.id==recent?-1:b.id==recent?1:a.title.compareTo(b.title));
             // Explicit recent order comes from the local history, not provider row IDs.
-            HashMap<String,Integer> rank=new HashMap<>();rank.put(RefreshActionCard.KEY,-1);
+            HashMap<String,Integer> rank=new HashMap<>();rank.put(RefreshActionCard.KEY,-2);rank.put(HiddenHome.ACTION,-1);
             try(RecentStore rs=new RecentStore(this)){int n=0;for(RecentStore.Entry e:rs.list(20))rank.put("fuoconero:"+e.key,n++);}
             Section recentSection=channels.get(recent);
             if(recentSection!=null)recentSection.cards.sort(Comparator.comparingInt(c->rank.getOrDefault(c.key,999)));
@@ -155,4 +156,3 @@ public class BrowseActivity extends Activity {
     private void action(LinearLayout r,String t,Runnable action){Button b=new Button(this);b.setText(t);b.setAllCaps(false);r.addView(b,new LinearLayout.LayoutParams(0,-2,1));b.setOnClickListener(v->action.run());}
     @Override public void onDestroy(){handler.removeCallbacksAndMessages(null);data.shutdownNow();images.shutdownNow();super.onDestroy();}
 }
-

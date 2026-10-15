@@ -197,13 +197,7 @@ public final class IptvPublisher {
                 values.put(TvContract.PreviewPrograms.COLUMN_INTENT_URI,
                     open.toUri(Intent.URI_INTENT_SCHEME));
                 Long before=existing.get(internal);
-                if(before!=null){
-                    values.remove(TvContract.PreviewPrograms.COLUMN_CHANNEL_ID);
-                    ctx.getContentResolver().update(
-                        TvContract.buildPreviewProgramUri(before),values,null,null);
-                }else{
-                    ctx.getContentResolver().insert(TvContract.PreviewPrograms.CONTENT_URI,values);
-                }
+                HiddenHome.write(ctx,values,before);
                 all++;
             }
             for(String old:existing.keySet()){

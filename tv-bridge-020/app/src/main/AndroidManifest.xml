@@ -14,6 +14,7 @@
           <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LEANBACK_LAUNCHER"/></intent-filter>
        </activity>
        <activity android:name=".RefreshAllActivity" android:exported="true" />
+       <activity android:name=".HiddenHomeActivity" android:exported="true" />
        <service android:name=".ManualRefreshJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="false" />
        <activity android:name=".MainActivity" android:exported="false" />
        <activity android:name=".EpgActivity" android:exported="false" />
@@ -43,4 +44,3 @@
        <service android:name=".SyncJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true" />
     </application>
 </manifest>
-

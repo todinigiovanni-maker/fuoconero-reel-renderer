@@ -132,7 +132,8 @@ public final class VeezieNews {
             if(item.series)open.putExtra("season","1").putExtra("episode_number","");
             String poster=WideArtwork.render(c,"news_"+hash,item.title,"Ultimi aggiornamenti su "+(source==0?"CB01":"Eurostreaming"),artwork(c,item,hash),-1,"APRI IN VEEZIE");
             ContentValues v=new ContentValues();v.put("channel_id",channel);v.put("internal_provider_id",internal);v.put("title",item.title);v.put("short_description","Dal catalogo "+LABELS[source]+" · Apri in Veezie");v.put("type",item.series?TvContract.PreviewPrograms.TYPE_TV_SERIES:TvContract.PreviewPrograms.TYPE_MOVIE);v.put("weight",1000-order++);v.put("poster_art_uri",poster);v.put("poster_art_aspect_ratio",TvContract.PreviewPrograms.ASPECT_RATIO_16_9);v.put("intent_uri",open.toUri(Intent.URI_INTENT_SCHEME));
-            Long old=existing.remove(internal);if(old==null)c.getContentResolver().insert(TvContract.PreviewPrograms.CONTENT_URI,v);else{v.remove("channel_id");c.getContentResolver().update(TvContract.buildPreviewProgramUri(old),v,null,null);}
+            v.put("content_id","news:"+key+":"+item.title.toLowerCase(java.util.Locale.ROOT));
+            Long old=existing.remove(internal);HiddenHome.write(c,v,old);
         }
         for(long old:existing.values())c.getContentResolver().delete(TvContract.buildPreviewProgramUri(old),null,null);
         RefreshActionCard.publish(c,channel);

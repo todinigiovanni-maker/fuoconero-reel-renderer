@@ -14,6 +14,31 @@ import org.json.JSONObject;
 
 /** Real Android SQLite/XML parser tests, isolated from the user's databases. */
 public class Core043Test {
+    @Test public void hidingSurvivesRefreshAndRestoreKeepsCatalog()throws Exception{
+        ContentValues channel=new ContentValues();channel.put("type",android.media.tv.TvContract.Channels.TYPE_PREVIEW);channel.put("display_name","Fuoconero isolated visibility test");
+        android.net.Uri channelUri=ctx.getContentResolver().insert(android.media.tv.TvContract.Channels.CONTENT_URI,channel);assertNotNull(channelUri);
+        long ch=ContentUris.parseId(channelUri);String key="test:hidden:"+System.nanoTime();
+        try(IptvStore store=new IptvStore(ctx)){
+            ContentValues entry=new ContentValues();entry.put("ident",key);entry.put("title","Test hidden film");entry.put("grp","Film");entry.put("url","https://example.invalid/test");entry.put("category","Film");entry.put("kind","Film");entry.put("adult",0);entry.put("seen",1);entry.put("first_seen",1);entry.put("fav",1);
+            long media=store.getWritableDatabase().insertOrThrow("entries",null,entry);
+            ContentValues v=new ContentValues();v.put("channel_id",ch);v.put("internal_provider_id",key);v.put("content_id",key);v.put("title","Test hidden film");v.put("type",android.media.tv.TvContract.PreviewPrograms.TYPE_MOVIE);v.put("weight",100);
+            HiddenHome.write(ctx,v,null);assertNotNull(HiddenHome.existing(ctx,v));
+            HiddenHome.hide(ctx,key);assertNull(HiddenHome.existing(ctx,v));assertTrue(HiddenHome.prefs(ctx).contains(key));
+            v.put("short_description","Updated while hidden");HiddenHome.write(ctx,v,null);assertNull(HiddenHome.existing(ctx,v));
+            assertNotNull(store.find(media));assertTrue(store.find(media).fav);assertEquals(1,store.searchMedia("Test hidden film",0,20).size());
+            HiddenHome.restore(ctx,key);assertFalse(HiddenHome.prefs(ctx).contains(key));Long id=HiddenHome.existing(ctx,v);assertNotNull(id);
+            try(android.database.Cursor q=ctx.getContentResolver().query(android.media.tv.TvContract.buildPreviewProgramUri(id),new String[]{"short_description"},null,null,null)){assertTrue(q.moveToFirst());assertEquals("Updated while hidden",q.getString(0));}
+            HiddenHome.restore(ctx,key);assertEquals(id,HiddenHome.existing(ctx,v));
+        }finally{HiddenHome.prefs(ctx).edit().remove(key).commit();ctx.getContentResolver().delete(channelUri,null,null);}
+    }
+    @Test public void hiddenIdentityKeepsActionsAndSeriesStable()throws Exception{
+        ContentValues v=new ContentValues();v.put("internal_provider_id",HiddenHome.ACTION);assertEquals("",HiddenHome.key(v));
+        v.put("internal_provider_id","fuoconero:iptv_42");assertEquals("iptv:42",HiddenHome.key(v));
+        v.put("content_id","iptv:series:test");assertEquals("iptv:series:test",HiddenHome.key(v));
+        v.put("internal_provider_id","fuoconero:iptv:show:99");assertEquals("iptv:series:test",HiddenHome.key(v));
+        v.put("duration_millis",5000000000L);v.putNull("episode_display_number");
+        ContentValues copy=HiddenHome.values(HiddenHome.json(v));assertEquals(Long.valueOf(5000000000L),copy.getAsLong("duration_millis"));assertTrue(copy.containsKey("episode_display_number"));assertNull(copy.get("episode_display_number"));
+    }
     private File testPoster(String name,int color)throws Exception{
         File f=new File(ctx.getFilesDir(),"posters/"+name);f.getParentFile().mkdirs();
         android.graphics.Bitmap b=android.graphics.Bitmap.createBitmap(32,48,android.graphics.Bitmap.Config.ARGB_8888);b.eraseColor(color);
