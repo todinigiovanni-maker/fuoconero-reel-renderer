@@ -44,7 +44,7 @@ public class MainActivity extends Activity {
         setContentView(scroll);
 
         label("FUOCONERO · TV BRIDGE",29,0xffff8c48,true);
-        label("0.3.6 TEST · Veezie per la riproduzione, Trakt come catalogo automatico.",17,Color.WHITE,false);
+        label("0.3.7 TEST · Veezie per la riproduzione, Trakt come catalogo automatico.",17,Color.WHITE,false);
         label("Le locandine si aggiornano da sole quando Trakt e' collegato. Nessun file ZIP e nessun trasferimento dal PC.",15,0xffcbd1df,false);
         label("Client ID Trakt (si inserisce una sola volta):",15,Color.WHITE,false);
         clientId=input("Client ID Trakt",trakt.getString("client_id",""),false);
@@ -110,7 +110,7 @@ public class MainActivity extends Activity {
             try{
                 startActivity(new android.content.Intent(
                     android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));
-                status("Abilita soltanto Fuoconero TV Bridge 0.3.6 TEST; disabilita i servizi delle vecchie versioni per evitare doppie azioni.");
+                status("Abilita soltanto Fuoconero TV Bridge 0.3.7 TEST; disabilita i servizi delle vecchie versioni per evitare doppie azioni.");
             }catch(Exception e){status("Apri Impostazioni TV > Accessibilita. "+e.getMessage());}
         });
         button("8 · Test lettura tempi Veezie (2 minuti)",()->{
@@ -127,7 +127,7 @@ public class MainActivity extends Activity {
                     TvSync.ensureStarter(this);
                     runOnUiThread(()->{
                         TvSync.requestVisibility(this);
-                        status("Richiesta di visibilita' inviata. Se necessario abilita la riga Fuoconero · Veezie/Trakt 0.3.6 TEST in Projectivy.");
+                        status("Richiesta di visibilita' inviata. Se necessario abilita la riga Fuoconero · Veezie/Trakt 0.3.7 TEST in Projectivy.");
                     });
                 }catch(Exception e){status("Canale: "+e.getMessage());}
             });
