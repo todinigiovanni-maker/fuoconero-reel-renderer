@@ -22,6 +22,23 @@ public class OpenContentActivity extends Activity {
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
         Intent clicked=getIntent();
+        // Use the same navigator as the working Veezie/Trakt 0.3.7 row.
+        // Cancel our own pending request so two accessibility services cannot
+        // drive Veezie at the same time.
+        if(clicked!=null){
+            VeezieNavService.cancel(this);
+            try{
+                startActivity(bridge037Intent(clicked));
+                RecentStore.openedVeezie(this,clicked);
+                getSharedPreferences("veezie_launch",MODE_PRIVATE).edit()
+                    .putString("last_result","APERTURA_TRAMITE_BRIDGE_037")
+                    .putString("last_title",clicked.getStringExtra("title"))
+                    .putLong("last_attempt",System.currentTimeMillis()).apply();
+                finish();return;
+            }catch(android.content.ActivityNotFoundException unavailable){
+                // Preserve standalone operation when the companion is absent.
+            }
+        }
         if(clicked!=null && clicked.getData()!=null &&
             "movie_openveezie".equals(clicked.getData().getLastPathSegment())){
             openVeezie(this);
@@ -38,15 +55,16 @@ public class OpenContentActivity extends Activity {
             && season.matches("[0-9]{1,3}") && episode.matches("[0-9]{1,3}")) {
             display+=" S"+season+"E"+episode;
         }
+        RecentStore.openedVeezie(this,clicked);
         String mode="ERRORE_APERTURA";
         // Accessibility permission is explicitly granted in Sony TV Settings.
         // The service is limited to Veezie and to the current card request.
         if(!title.trim().isEmpty() && VeezieNavService.isEnabled(this)){
             VeezieNavService.request(this,title,season==null?"":season,
-                episode==null?"":episode);
+                episode==null?"":episode,tvEpisode);
             if(openVeezie(this)){
                 mode="NAVIGAZIONE_AUTOMATICA_RICHIESTA";
-                Toast.makeText(this,"Cerco "+title+" in Veezie (max 25 s)",Toast.LENGTH_LONG).show();
+                Toast.makeText(this,"Cerco "+title+" in Veezie (max 60 s)",Toast.LENGTH_LONG).show();
             }else{
                 VeezieNavService.cancel(this);
                 mode="VEEZIE_NON_INSTALLATA";
@@ -74,6 +92,16 @@ public class OpenContentActivity extends Activity {
             .putInt("search_attempts",p.getInt("search_attempts",0)+1)
             .apply();
         finish();
+    }
+
+    static Intent bridge037Intent(Intent clicked){
+        return new Intent(Intent.ACTION_VIEW).setData(clicked.getData())
+            .setComponent(new android.content.ComponentName("com.fuoconero.tvbridge.test037","com.fuoconero.tvbridge.OpenContentActivity"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            .putExtra("title",clicked.getStringExtra("title"))
+            .putExtra("episode",clicked.getBooleanExtra("episode",false))
+            .putExtra("season",clicked.getStringExtra("season"))
+            .putExtra("episode_number",clicked.getStringExtra("episode_number"));
     }
 
     private static boolean searchVeezie(Context ctx,String title) {
@@ -110,9 +138,12 @@ public class OpenContentActivity extends Activity {
         try {
             Intent target=ctx.getPackageManager().getLaunchIntentForPackage(VEEZIE);
             if(target==null)return false;
-            target.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            // Recreate Veezie navigation so hidden Ionic dialogs from a prior title cannot intercept this request.
+            // CLEAR_TASK resets the activity stack, not Veezie channels, account or watch history.
+            target.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK);
             ctx.startActivity(target);
             return true;
         } catch(Exception e){return false;}
     }
 }
+

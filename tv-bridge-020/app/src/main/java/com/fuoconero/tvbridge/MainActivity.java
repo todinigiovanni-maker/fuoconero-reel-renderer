@@ -44,9 +44,9 @@ public class MainActivity extends Activity {
         scroll.addView(root);
         setContentView(scroll);
 
-        label("FUOCONERO · IPTV EDITION",29,0xffff8c48,true);
-        label("0.4.2 TEST · Modulo IPTV che affianca la 0.3.6 funzionante.",17,Color.WHITE,false);
-        label("Apri subito IPTV qui sotto. La 0.3.6 continua a gestire Veezie e Trakt.",15,0xffcbd1df,false);
+        label("FUOCONERO · IMPOSTAZIONI 0.4.3",29,0xffff8c48,true);
+        label("0.4.3 TEST · Modulo IPTV che affianca la 0.3.6 funzionante.",17,Color.WHITE,false);
+        label("Configurazione della sola versione 0.4.3 SAFE TEST.",15,0xffcbd1df,false);
         button("▶ ENTRA IN FUOCONERO IPTV",()->{
             startActivity(new Intent(this,IptvActivity.class));
         });
@@ -117,7 +117,7 @@ public class MainActivity extends Activity {
             try{
                 startActivity(new android.content.Intent(
                     android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));
-                status("Abilita soltanto Fuoconero TV Bridge 0.4.2 TEST; disabilita i servizi delle vecchie versioni per evitare doppie azioni.");
+                status("Abilita soltanto Fuoconero TV Bridge 0.4.3 TEST; Le versioni precedenti non vengono configurate da questa app.");
             }catch(Exception e){status("Apri Impostazioni TV > Accessibilita. "+e.getMessage());}
         });
         button("8 · Test lettura tempi Veezie (2 minuti)",()->{
@@ -134,7 +134,7 @@ public class MainActivity extends Activity {
                     TvSync.ensureStarter(this);
                     runOnUiThread(()->{
                         TvSync.requestVisibility(this);
-                        status("Richiesta di visibilita' inviata. Se necessario abilita la riga Fuoconero · Veezie/Trakt 0.4.2 TEST in Projectivy.");
+                        status("Richiesta di visibilita' inviata. Se necessario abilita la riga 🔥 FUOCONERO — CONTINUA A GUARDARE in Projectivy.");
                     });
                 }catch(Exception e){status("Canale: "+e.getMessage());}
             });
@@ -241,3 +241,4 @@ public class MainActivity extends Activity {
         super.onDestroy();
     }
 }
+

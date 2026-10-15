@@ -24,11 +24,12 @@ import android.os.SystemClock;
  */
 public class VeezieNavService extends AccessibilityService {
     static final String PREFS="veezie_nav";
-    static final long TIMEOUT_MS=25000L;
+    static final long TIMEOUT_MS=60000L;
     private final Handler handler=new Handler(Looper.getMainLooper());
     private long requestId=-1;
     private int stage=0;
-    private String title="";
+    private String title="",season="",episode="";
+    private boolean seriesRequest=false;
     private long lastAction=0;
     private int attempts=0;
     private boolean running=false;
@@ -43,6 +44,7 @@ public class VeezieNavService extends AccessibilityService {
         super.onServiceConnected();
         getSharedPreferences(PREFS,MODE_PRIVATE).edit().putBoolean("service_seen",true).apply();
         queue();
+        handler.post(playbackObserver);
     }
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {
         if(event==null||event.getPackageName()==null)return;
@@ -55,21 +57,62 @@ public class VeezieNavService extends AccessibilityService {
                 ||event.getEventType()==AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
                 p.edit().putLong("last_veezie_event",now).apply();
             if(now<p.getLong("probe_until",0L)) samplePlayback(p,now);
+            handler.removeCallbacks(playbackObserver);
+            handler.post(playbackObserver);
             queue();
             return;
         }
         if("com.spocky.projengmenu".equals(pkg) &&
             event.getEventType()==AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED){
+            HomeRefreshJob.request(getApplicationContext());
             long watched=p.getLong("last_veezie_event",0L);
             long requested=p.getLong("last_projectivy_refresh",0L);
             // Once per Veezie visit and only on returning to Projectivy.
             // The job runs no sooner than the cooldown and only with network.
             if(watched>requested && now-watched>=0 && now-watched<6L*60L*60L*1000L){
                 p.edit().putLong("last_projectivy_refresh",now).apply();
+                RecentStore.asyncPublish(getApplicationContext());
                 SyncJob.requestRefresh(getApplicationContext());
             }
         }
     }
+
+    private long playbackLastScan=0;
+    private final Runnable playbackObserver=new Runnable(){
+        @Override public void run(){
+            AccessibilityNodeInfo root=getRootInActiveWindow();
+            if(root==null || root.getPackageName()==null || !"st.veezie".contentEquals(root.getPackageName()))return;
+            long now=SystemClock.elapsedRealtime();
+            if(now-playbackLastScan>=2000L){
+                playbackLastScan=now;
+                String title=playerText(root,"exo_title");
+                String position=playerText(root,"exo_position"),duration=playerText(root,"exo_duration");
+                String subtitle=playerText(root,"exo_subtitle");
+                // IDs observed on the actual Veezie 3.4.7 player: no clock ordering guesses.
+                if(!title.isEmpty() && isClock(position) && isClock(duration)){
+                    String season="",episode="";
+                    java.util.regex.Matcher m=java.util.regex.Pattern.compile("^([0-9]{1,3})x([0-9]{1,3})\\b.*")
+                        .matcher(subtitle);
+                    boolean valid=subtitle.isEmpty();
+                    if(m.matches()){
+                        season=String.valueOf(Integer.parseInt(m.group(1)));
+                        episode=String.valueOf(Integer.parseInt(m.group(2)));valid=true;
+                    }
+                    if(valid)TvSync.recordVeeziePlayback(getApplicationContext(),title,season,episode,
+                        clockSeconds(position)*1000L,clockSeconds(duration)*1000L);
+                }
+            }
+            handler.removeCallbacks(this);
+            handler.postDelayed(this,2000L);
+        }
+    };
+    private String playerText(AccessibilityNodeInfo root,String id){
+        java.util.List<AccessibilityNodeInfo> nodes=root.findAccessibilityNodeInfosByViewId("st.veezie:id/"+id);
+        if(nodes==null || nodes.size()!=1)return "";
+        AccessibilityNodeInfo node=nodes.get(0);
+        return node.isVisibleToUser() && node.getText()!=null?node.getText().toString().trim():"";
+    }
+
     /**
      * Explicit short-lived probe: reads only exposed playback slider metadata
      * while Veezie is in the foreground. No screen text or auth data stored.
@@ -177,6 +220,7 @@ public class VeezieNavService extends AccessibilityService {
     }
     @Override public void onInterrupt(){halt("Interrotto");}
     @Override public void onDestroy(){
+        handler.removeCallbacks(playbackObserver);
         halt("Servizio interrotto");
         super.onDestroy();
     }
@@ -214,6 +258,9 @@ public class VeezieNavService extends AccessibilityService {
             requestId=id;
             stage=0;attempts=0;lastAction=0;
             title=p.getString("title","").trim();
+            season=p.getString("season","").trim();
+            seriesRequest=p.getBoolean("series",false);
+            episode=p.getString("episode","").trim();
         }
         long now=System.currentTimeMillis();
         if(now>p.getLong("expires",0)){finish("Tempo scaduto: navigazione manuale");return;}
@@ -224,6 +271,22 @@ public class VeezieNavService extends AccessibilityService {
         // Throttle each step, so events caused by our own actions cannot loop.
         if(now-lastAction<850)return;
         try{
+            if(stage<=1){
+                AccessibilityNodeInfo close=findLabel(root,new String[]{"chiudi","close"},true,false);
+                if(close!=null&&click(close)){lastAction=now;attempts=0;return;}
+                String[] typeLabels=seriesRequest?
+                    new String[]{"serie tv","tv series"}:new String[]{"film","movies"};
+                AccessibilityNodeInfo typePrompt=findLabel(root,new String[]{"cosa vuoi cercare?"},true,false);
+                AccessibilityNodeInfo type=typePrompt==null?null:findPromptControl(typePrompt,typeLabels);
+                if(type!=null&&click(type)){
+                    stage=1;lastAction=now;attempts=0;setStatus("Tipo contenuto selezionato");return;
+                }
+                AccessibilityNodeInfo globalPrompt=findLabel(root,new String[]{"dove vuoi cercare?"},true,false);
+                AccessibilityNodeInfo global=globalPrompt==null?null:findPromptControl(globalPrompt,new String[]{"ricerca globale","global search"});
+                if(global!=null&&click(global)){
+                    stage=1;lastAction=now;attempts=0;setStatus("Ricerca globale selezionata");return;
+                }
+            }
             // 0: locate search icon, 1: text field, 2: exact match, 3: Episodes button
             if(stage==0){
                 AccessibilityNodeInfo edit=findEdit(root);
@@ -245,7 +308,7 @@ public class VeezieNavService extends AccessibilityService {
                     }
                 }else{
                     attempts++;
-                    if(attempts>12)finish("Campo ricerca non accessibile; cerca manualmente");
+                    if(attempts>24)finish("Campo ricerca non accessibile; cerca manualmente");
                 }
             }else if(stage==2){
                 AccessibilityNodeInfo result=findExactTitle(root,title);
@@ -256,13 +319,38 @@ public class VeezieNavService extends AccessibilityService {
                     finish("Titolo non individuato tra i risultati; completa manualmente");
                 }
             }else if(stage==3){
+                if(!season.matches("[0-9]{1,3}")||!episode.matches("[0-9]{1,3}")){
+                    if(findLabel(root,new String[]{"riproduci","play"},true,false)!=null){
+                        finish("Scheda contenuto aperta: "+title);return;
+                    }
+                    if(++attempts>20)finish("Titolo selezionato; scheda da completare manualmente");
+                    return;
+                }
                 AccessibilityNodeInfo episodes=findLabel(root,
                     new String[]{"episodi","episodes"},true,false);
                 if(episodes!=null && click(episodes)){
                     lastAction=now;
-                    finish("Elenco episodi aperto: "+title);
+                    stage=4;attempts=0;setStatus("Scelgo la stagione "+season);
                 }else if(++attempts>15){
                     finish("Scheda selezionata, ma pulsante Episodi non accessibile");
+                }
+            }else if(stage==4){
+                AccessibilityNodeInfo selected=findNumbered(root,season,true);
+                if(selected!=null&&click(selected)){
+                    stage=5;attempts=0;lastAction=now;
+                    setStatus("Stagione "+season+" aperta; cerco episodio "+episode);
+                }else if(++attempts>15){
+                    finish("Elenco stagioni aperto; stagione richiesta non disponibile");
+                }else if(attempts%3==0){scroll(root,true);lastAction=now;}
+            }else if(stage==5){
+                AccessibilityNodeInfo selected=findNumbered(root,episode,false);
+                if(selected!=null&&click(selected)){
+                    finish("Episodio selezionato: "+title+" S"+season+"E"+episode+
+                        ". Scegli Riproduci o l'host in Veezie.");
+                }else if(++attempts>20){
+                    finish("Stagione aperta; episodio richiesto non individuato");
+                }else{
+                    scroll(root,attempts>5);lastAction=now;
                 }
             }
         }catch(Exception e){
@@ -273,6 +361,65 @@ public class VeezieNavService extends AccessibilityService {
     private void setStatus(String status){
         getSharedPreferences(PREFS,MODE_PRIVATE).edit().putString("result",status).apply();
     }
+
+    private static AccessibilityNodeInfo findPromptControl(AccessibilityNodeInfo prompt,String[] labels){
+        AccessibilityNodeInfo parent=prompt.getParent();
+        for(int i=0;i<3&&parent!=null;i++){
+            if("android.webkit.WebView".contentEquals(parent.getClassName()))break;
+            AccessibilityNodeInfo control=findLabel(parent,labels,true,false);
+            if(control!=null)return control;
+            parent=parent.getParent();
+        }
+        return null;
+    }
+    private static String label(CharSequence value){
+        if(value==null)return "";
+        return value.toString().replaceAll("[\\p{Co}\\p{So}\\p{Cntrl}]"," ")
+            .replaceAll("\\s+"," ").trim().toLowerCase(Locale.ROOT);
+    }
+    private static AccessibilityNodeInfo findNumbered(AccessibilityNodeInfo root,String number,boolean season){
+        int expected;
+        try{expected=Integer.parseInt(number);}catch(Exception e){return null;}
+        java.util.regex.Pattern pattern=java.util.regex.Pattern.compile(
+            season?"^(?:stagione|season)\\s*0*([0-9]{1,3})\\b.*":
+                "^(?:episodio\\s*)?0*([0-9]{1,3})\\s*[-–:].*");
+        ArrayDeque<AccessibilityNodeInfo> stack=new ArrayDeque<>();stack.add(root);
+        AccessibilityNodeInfo fallback=null;int checked=0;
+        while(!stack.isEmpty()&&checked++<850){
+            AccessibilityNodeInfo node=stack.removeFirst();
+            if(node.isVisibleToUser()&&!node.isEditable()&&"st.veezie".contentEquals(node.getPackageName())){
+                String text=label(node.getText());
+                java.util.regex.Matcher match=pattern.matcher(text);
+                if(match.matches()&&Integer.parseInt(match.group(1))==expected){
+                    if(!season||text.matches(".*\\bita\\b.*"))return node;
+                    if(fallback==null)fallback=node;
+                }
+            }
+            for(int i=0;i<node.getChildCount();i++){
+                AccessibilityNodeInfo child=node.getChild(i);if(child!=null)stack.addLast(child);
+            }
+        }
+        return fallback;
+    }
+    private static boolean scroll(AccessibilityNodeInfo root,boolean forward){
+        ArrayDeque<AccessibilityNodeInfo> stack=new ArrayDeque<>();stack.add(root);int checked=0;
+        java.util.ArrayList<AccessibilityNodeInfo> scrollables=new java.util.ArrayList<>();
+        while(!stack.isEmpty()&&checked++<850){
+            AccessibilityNodeInfo node=stack.removeFirst();
+            if(node.isVisibleToUser()&&node.isScrollable()&&"st.veezie".contentEquals(node.getPackageName())
+                 )scrollables.add(node);
+            for(int i=0;i<node.getChildCount();i++){
+                AccessibilityNodeInfo child=node.getChild(i);if(child!=null)stack.addLast(child);
+            }
+        }
+        // Veezie retains its page behind modal lists: prefer the deepest active list.
+        for(int i=scrollables.size()-1;i>=0;i--){
+            if(scrollables.get(i).performAction(forward?AccessibilityNodeInfo.ACTION_SCROLL_FORWARD:
+                AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD))return true;
+        }
+        return false;
+    }
+
     private static AccessibilityNodeInfo findEdit(AccessibilityNodeInfo root){
         ArrayDeque<AccessibilityNodeInfo> stack=new ArrayDeque<>();
         stack.add(root);int checked=0;
@@ -288,12 +435,22 @@ public class VeezieNavService extends AccessibilityService {
         return null;
     }
     private static AccessibilityNodeInfo findExactTitle(AccessibilityNodeInfo root,String title){
+        // Only choose results in the active search pane, never a home card behind it.
+        AccessibilityNodeInfo edit=findEdit(root);
+        if(edit==null)return null;
+        AccessibilityNodeInfo pane=edit.getParent();
+        for(int depth=0;depth<5 && pane!=null;depth++){
+            if(pane.isScrollable()){root=pane;break;}
+            AccessibilityNodeInfo parent=pane.getParent();
+            if(parent==null||"android.webkit.WebView".contentEquals(parent.getClassName())){root=pane;break;}
+            pane=parent;
+        }
         ArrayDeque<AccessibilityNodeInfo> stack=new ArrayDeque<>();
         stack.add(root);int checked=0;
-        String expected=title.trim().toLowerCase(Locale.ROOT);
+        String expected=label(title);
         while(!stack.isEmpty() && checked++<450){
             AccessibilityNodeInfo n=stack.removeFirst();
-            String text=n.getText()==null?"":n.getText().toString().trim().toLowerCase(Locale.ROOT);
+            String text=label(n.getText());
             // Never click the search field itself as if it were a result.
             if(n.isVisibleToUser() && !n.isEditable() && text.equals(expected)
                 && "st.veezie".contentEquals(n.getPackageName()))return n;
@@ -312,8 +469,8 @@ public class VeezieNavService extends AccessibilityService {
             AccessibilityNodeInfo n=stack.removeFirst();
             if(n.isVisibleToUser() && (!editable || n.isEditable()) &&
                 "st.veezie".contentEquals(n.getPackageName())){
-                String text=n.getText()==null?"":n.getText().toString().trim().toLowerCase(Locale.ROOT);
-                String desc=n.getContentDescription()==null?"":n.getContentDescription().toString().trim().toLowerCase(Locale.ROOT);
+                String text=label(n.getText());
+                String desc=label(n.getContentDescription());
                 String viewId=n.getViewIdResourceName()==null?"":n.getViewIdResourceName().toLowerCase(Locale.ROOT);
                 for(String label:labels){
                     if((exact?(text.equals(label)||desc.equals(label)):
@@ -340,10 +497,11 @@ public class VeezieNavService extends AccessibilityService {
         }
         return false;
     }
-    public static void request(Context ctx,String title,String season,String ep){
+    public static void request(Context ctx,String title,String season,String ep,boolean series){
         long now=System.currentTimeMillis();
         getPrefs(ctx).edit()
             .putBoolean("pending",true)
+            .putBoolean("series",series)
             .putLong("request_id",now)
             .putLong("expires",now+TIMEOUT_MS)
             .putString("title",title)
@@ -366,7 +524,7 @@ public class VeezieNavService extends AccessibilityService {
             "\nAmbito: solo interfaccia di Veezie"+
             "\nAutomazione avviata: "+(p.getBoolean("pending",false)?"SI":"NO")+
             "\nUltimo stato: "+p.getString("result","non ancora provata")+
-            "\nLimite ricerca: 25 secondi; nessun clic se il titolo non e' riconosciuto"+
+            "\nLimite ricerca: 60 secondi; nessun clic se il titolo non e' riconosciuto"+
             "\nSonda riproduzione: "+(System.currentTimeMillis()<p.getLong("probe_until",0L)?"ATTIVA (2 min)":"NON ATTIVA")+
             "\nBarre Veezie osservate: "+p.getInt("probe_slider_hits",0)+
             "\nUltima barra osservata: "+(p.getInt("probe_last_percent",-1)<0?"non rilevata":
@@ -393,3 +551,4 @@ public class VeezieNavService extends AccessibilityService {
         return false;
     }
 }
+

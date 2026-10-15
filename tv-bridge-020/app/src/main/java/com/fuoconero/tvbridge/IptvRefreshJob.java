@@ -21,6 +21,10 @@ import java.net.URL;
 public class IptvRefreshJob extends JobService {
     static final int JOB_ID=4080;
     static final long PERIOD=12L*60*60*1000;
+    static final long FLEX=Math.max(JobInfo.getMinFlexMillis(),Math.max(30L*60*1000,PERIOD/20));
+    private static final java.util.concurrent.atomic.AtomicBoolean UPDATING=
+        new java.util.concurrent.atomic.AtomicBoolean(false);
+    public static boolean isUpdating(){return UPDATING.get();}
     @Override public boolean onStartJob(JobParameters params){
         new Thread(()->{
             try{
@@ -34,21 +38,50 @@ public class IptvRefreshJob extends JobService {
     @Override public boolean onStopJob(JobParameters params){return true;}
 
     public static String update(Context ctx,IptvStore.Progress progress)throws Exception{
-        SharedPreferences prefs=ctx.getSharedPreferences(IptvStore.PREFS,Context.MODE_PRIVATE);
-        String remote=prefs.getString("source_url","").trim();
-        String savedUri=prefs.getString("source_uri","").trim();
-        String savedPath=prefs.getString("source_path","").trim();
-        if(remote.isEmpty() && savedUri.isEmpty() && savedPath.isEmpty())
-            throw new IOException("Importa un file M3U da Download o inserisci l'URL della lista.");
-        try(InputStream in=!remote.isEmpty()?openRemote(remote):
-            !savedPath.isEmpty()?openLocalFile(ctx,savedPath):
-            ctx.getContentResolver().openInputStream(Uri.parse(savedUri))){
-            if(in==null)throw new IOException("La fonte M3U non e' accessibile.");
-            String result=new IptvStore(ctx).importPlaylist(ctx,in,progress);
-            String projectivy=IptvPublisher.publish(ctx);
-            schedule(ctx);
-            return result+"\n"+projectivy;
+        if(!UPDATING.compareAndSet(false,true))
+            throw new IOException("Importazione gia' in corso. Attendi la fine prima di aggiornare di nuovo.");
+        try{
+            SharedPreferences prefs=ctx.getSharedPreferences(IptvStore.PREFS,Context.MODE_PRIVATE);
+            String remote=prefs.getString("source_url","").trim();
+            String savedUri=prefs.getString("source_uri","").trim();
+            String savedPath=prefs.getString("source_path","").trim();
+            if(remote.isEmpty() && savedUri.isEmpty() && savedPath.isEmpty())
+                throw new IOException("Importa un file M3U da Download o inserisci l'URL della lista.");
+            try(InputStream in=!remote.isEmpty()?downloadPlaylist(ctx,remote,progress):
+                !savedPath.isEmpty()?openLocalFile(ctx,savedPath):
+                ctx.getContentResolver().openInputStream(Uri.parse(savedUri))){
+                if(in==null)throw new IOException("La fonte M3U non e' accessibile.");
+                String result;
+                try(IptvStore store=new IptvStore(ctx)){
+                    result=store.importPlaylist(ctx,in,progress);
+                }
+                String projectivy=IptvPublisher.publish(ctx);
+                return result+"\n"+projectivy;
+            }
+        }catch(Exception e){
+            ctx.getSharedPreferences(IptvStore.PREFS,Context.MODE_PRIVATE).edit().putString("refresh_error","Lista non aggiornata: controlla rete o sorgente").putString("refresh_error_type",e.getClass().getSimpleName()).apply();
+            RefreshActionCard.refreshExisting(ctx);throw e;
+        }finally{
+            UPDATING.set(false);
         }
+    }
+    private static InputStream downloadPlaylist(Context ctx,String url,IptvStore.Progress progress)throws Exception{
+        File cached=File.createTempFile("playlist-refresh-",".m3u",ctx.getCacheDir());
+        try{
+            if(progress!=null)progress.say("Scarico la lista aggiornata...");
+            // Finish the network transfer before slower SQLite work can stall the socket.
+            try(InputStream source=openRemote(url);java.io.FileOutputStream out=new java.io.FileOutputStream(cached)){
+                byte[] buffer=new byte[65536];int n;
+                while((n=source.read(buffer))!=-1){
+                    if(Thread.currentThread().isInterrupted())throw new IOException("Download interrotto");
+                    out.write(buffer,0,n);
+                }
+            }
+            if(progress!=null)progress.say("Confronto la lista con il catalogo...");
+            return new java.io.FilterInputStream(new FileInputStream(cached)){
+                @Override public void close()throws IOException{try{super.close();}finally{cached.delete();}}
+            };
+        }catch(Exception e){cached.delete();throw e;}
     }
     private static InputStream openLocalFile(Context ctx,String path)throws Exception{
         File file=new File(path).getCanonicalFile();
@@ -102,17 +135,7 @@ public class IptvRefreshJob extends JobService {
         };
     }
     public static void schedule(Context ctx){
-        SharedPreferences p=ctx.getSharedPreferences(IptvStore.PREFS,Context.MODE_PRIVATE);
-        boolean online=!p.getString("source_url","").isEmpty();
-        boolean local=!p.getString("source_uri","").isEmpty()||
-            !p.getString("source_path","").isEmpty();
-        if(!online&&!local)return;
-        JobScheduler scheduler=(JobScheduler)ctx.getSystemService(Context.JOB_SCHEDULER_SERVICE);
-        if(scheduler==null)return;
-        JobInfo info=new JobInfo.Builder(JOB_ID,new ComponentName(ctx,IptvRefreshJob.class))
-            .setPeriodic(PERIOD)
-            .setRequiredNetworkType(online?JobInfo.NETWORK_TYPE_ANY:JobInfo.NETWORK_TYPE_NONE)
-            .setPersisted(false).build();
-        scheduler.schedule(info);
+        HomeRefreshJob.schedule(ctx);
     }
 }
+

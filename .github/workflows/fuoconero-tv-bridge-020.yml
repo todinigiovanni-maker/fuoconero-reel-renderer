@@ -1,8 +1,8 @@
-name: Fuoconero TV Bridge 0.4.2 SAFE TEST APK
+name: Fuoconero TV Bridge 0.4.3 SAFE TEST APK
 on:
   push:
     branches:
-      - fuoconero-tv-bridge-042-playlist-names-tv-controls
+      - fuoconero-tv-bridge-043-netflix-safe-test
     paths:
       - 'tv-bridge-020/**'
       - '.github/workflows/fuoconero-tv-bridge-020.yml'
@@ -32,12 +32,29 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: fuoconero-tv-bridge-043-signing-v1
+      - name: Stable signing key
+        run: |
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair -noprompt -keystore "$HOME/.android/debug.keystore" -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Fuoconero 043 Safe Test, O=Fuoconero, C=IT"
+          fi
       - name: Build APK
         working-directory: tv-bridge-020
-        run: gradle --no-daemon --stacktrace :app:assembleDebug
+        run: gradle --no-daemon --stacktrace :app:assembleDebug :app:assembleDebugAndroidTest
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Fuoconero-TV-Bridge-0.4.2-safe-test
+          name: Fuoconero-TV-Bridge-0.4.3-safe-test
           path: tv-bridge-020/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+      - name: Upload on-device test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fuoconero-TV-Bridge-0.4.3-instrumentation
+          path: tv-bridge-020/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          if-no-files-found: error
+
