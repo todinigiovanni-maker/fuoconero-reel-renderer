@@ -7,7 +7,7 @@ public final class RefreshActionCard {
     static String summary(Context c){
         SharedPreferences p=c.getSharedPreferences(IptvStore.PREFS,Context.MODE_PRIVATE);
         long at=p.getLong("last_checked",p.getLong("last_success",0));
-        String date=at==0?"Lista non ancora aggiornata":"Lista controllata "+new java.text.SimpleDateFormat("dd/MM HH:mm",java.util.Locale.ITALY).format(new java.util.Date(at));
+        String date=at==0?"Lista IPTV non ancora aggiornata":"IPTV: lista controllata "+new java.text.SimpleDateFormat("dd/MM HH:mm",java.util.Locale.ITALY).format(new java.util.Date(at));
         String error=p.getString("refresh_error","");
         if(!error.isEmpty())return date+"\n"+error;
         if(!p.contains("new_films"))return date+"\nAggiornamento automatico ogni ora";

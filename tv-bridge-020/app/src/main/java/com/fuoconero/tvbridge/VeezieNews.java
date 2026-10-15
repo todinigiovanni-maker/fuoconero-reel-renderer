@@ -20,6 +20,7 @@ public final class VeezieNews {
     private static final String[] LABELS={"CB01 · Film recenti","Eurostreaming · Serie aggiornate"};
     private static final java.util.concurrent.atomic.AtomicBoolean BUSY=new java.util.concurrent.atomic.AtomicBoolean();
     static final class Item {String title,url,image;boolean series;}
+    static String searchTitle(String title){return title.replaceAll("\\s*\\((?:19|20)\\d{2}\\)\\s*$","").trim();}
     private static String plain(String s){return Html.fromHtml(s,Html.FROM_HTML_MODE_LEGACY).toString().replaceAll("\\s+"," ").trim();}
     private static String match(String regex,String s){Matcher m=Pattern.compile(regex,Pattern.CASE_INSENSITIVE|Pattern.DOTALL).matcher(s);return m.find()?m.group(1):"";}
     static ArrayList<Item> parse(String html,boolean euro){
@@ -102,7 +103,7 @@ public final class VeezieNews {
         int order=0;
         for(Item item:items){
             String hash=id(item.url),internal="news:"+key+":"+hash;
-            Intent open=new Intent(c,OpenContentActivity.class).setAction(Intent.ACTION_VIEW).setData(Uri.parse("fuoconero://news/"+key+"/"+hash)).putExtra("title",item.title).putExtra("episode",item.series).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            Intent open=new Intent(c,OpenContentActivity.class).setAction(Intent.ACTION_VIEW).setData(Uri.parse("fuoconero://news/"+key+"/"+hash)).putExtra("title",searchTitle(item.title)).putExtra("episode",item.series).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             if(item.series)open.putExtra("season","1").putExtra("episode_number","");
             String poster=WideArtwork.render(c,"news_"+hash,item.title,"Ultimi aggiornamenti su "+(source==0?"CB01":"Eurostreaming"),artwork(c,item,hash),-1,"APRI IN VEEZIE");
             ContentValues v=new ContentValues();v.put("channel_id",channel);v.put("internal_provider_id",internal);v.put("title",item.title);v.put("short_description","Dal catalogo "+LABELS[source]+" · Apri in Veezie");v.put("type",item.series?TvContract.PreviewPrograms.TYPE_TV_SERIES:TvContract.PreviewPrograms.TYPE_MOVIE);v.put("weight",1000-order++);v.put("poster_art_uri",poster);v.put("poster_art_aspect_ratio",TvContract.PreviewPrograms.ASPECT_RATIO_16_9);v.put("intent_uri",open.toUri(Intent.URI_INTENT_SCHEME));
