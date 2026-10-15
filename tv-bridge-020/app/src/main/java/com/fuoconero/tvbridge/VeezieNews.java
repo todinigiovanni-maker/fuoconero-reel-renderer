@@ -24,6 +24,9 @@ public final class VeezieNews {
     private static String plain(String s){return Html.fromHtml(s,Html.FROM_HTML_MODE_LEGACY).toString().replaceAll("\\s+"," ").trim();}
     private static String match(String regex,String s){Matcher m=Pattern.compile(regex,Pattern.CASE_INSENSITIVE|Pattern.DOTALL).matcher(s);return m.find()?m.group(1):"";}
     static ArrayList<Item> parse(String html,boolean euro){
+        return parse(html,euro,URLS[euro?1:0]);
+    }
+    static ArrayList<Item> parse(String html,boolean euro,String base){
         ArrayList<Item> result=new ArrayList<>();HashSet<String> seen=new HashSet<>();
         String pattern=euro?"<li\\b[^>]*id=[\"']post-[^\"']+[\"'][^>]*>(.*?)</li>":"<div\\b[^>]*class=[\"']card mp-post horizontal[\"'][^>]*>(.*?</h3>)";
         Matcher blocks=Pattern.compile(pattern,Pattern.CASE_INSENSITIVE|Pattern.DOTALL).matcher(html);
@@ -34,7 +37,7 @@ public final class VeezieNews {
             item.image=plain(match("<img[^>]*src=[\"']([^\"']+)[\"']",block));item.series=euro;
             try{
                 URI page=new URI(item.url);String host=page.getHost();
-                if(!"https".equals(page.getScheme())||!(euro?"eurostream.pics":"cb01uno.vip").equalsIgnoreCase(host))continue;
+                if(!"https".equals(page.getScheme())||!new URI(base).getHost().equalsIgnoreCase(host))continue;
                 if(item.title.length()<2||item.title.length()>200||!seen.add(item.url))continue;
                 URI art=new URI(item.image);if(!"https".equals(art.getScheme())||!host.equalsIgnoreCase(art.getHost()))item.image="";
                 result.add(item);
@@ -42,17 +45,32 @@ public final class VeezieNews {
         }
         return result;
     }
-    private static byte[] fetch(String url,int max)throws Exception{
+    static String redirect(String from,String location)throws Exception{
+        if(location==null||location.trim().isEmpty())throw new IOException("Rimando mancante");
+        URI u=new URI(from).resolve(location.trim());String host=u.getHost();
+        if(!"https".equalsIgnoreCase(u.getScheme())||host==null||u.getUserInfo()!=null||host.equalsIgnoreCase("localhost")||host.indexOf('.')<0||host.matches("[0-9.]+")||u.getPort()>0&&u.getPort()!=443)throw new IOException("Rimando non valido");
+        return u.toASCIIString();
+    }
+    private static final class Page {byte[] bytes;String url;Page(byte[] b,String u){bytes=b;url=u;}}
+    private static byte[] fetch(String url,int max)throws Exception{return fetchPage(url,max).bytes;}
+    private static Page fetchPage(String url,int max)throws Exception{
+        for(int hop=0;hop<4;hop++){
+        String host=new URL(url).getHost();
+        for(java.net.InetAddress address:java.net.InetAddress.getAllByName(host))if(address.isAnyLocalAddress()||address.isLoopbackAddress()||address.isLinkLocalAddress()||address.isSiteLocalAddress())throw new IOException("Indirizzo non pubblico");
         HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();
         c.setConnectTimeout(10000);c.setReadTimeout(15000);c.setInstanceFollowRedirects(false);
         c.setRequestProperty("User-Agent","Mozilla/5.0 FuoconeroTV/0.4.3");
         try{
-            if(c.getResponseCode()!=200)throw new IOException("Catalogo non raggiungibile");
+            int status=c.getResponseCode();
+            if(status==301||status==302||status==303||status==307||status==308){url=redirect(url,c.getHeaderField("Location"));continue;}
+            if(status!=200)throw new IOException("Catalogo non raggiungibile");
             if(c.getContentLengthLong()>max)throw new IOException("Risposta troppo grande");
             try(InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){
-                byte[] b=new byte[16384];int n;while((n=in.read(b))!=-1){if(out.size()+n>max)throw new IOException("Risposta troppo grande");out.write(b,0,n);}return out.toByteArray();
+                byte[] b=new byte[16384];int n;while((n=in.read(b))!=-1){if(out.size()+n>max)throw new IOException("Risposta troppo grande");out.write(b,0,n);}return new Page(out.toByteArray(),url);
             }
         }finally{c.disconnect();}
+        }
+        throw new IOException("Troppi rimandi");
     }
     public static void refresh(Context c,boolean force){
         if(!BUSY.compareAndSet(false,true))return;
@@ -64,10 +82,17 @@ public final class VeezieNews {
                 if(!force&&now-p.getLong(key+"_attempt",0)<900000L)continue;
                 p.edit().putLong(key+"_attempt",now).apply();
                 try{
-                    ArrayList<Item> items=parse(new String(fetch(URLS[i],2*1024*1024),StandardCharsets.UTF_8),i==1);
+                    Page page;ArrayList<Item> items;
+                    try{
+                        page=fetchPage(URLS[i],2*1024*1024);items=parse(new String(page.bytes,StandardCharsets.UTF_8),i==1,page.url);
+                        if(items.isEmpty())throw new IOException("Catalogo non riconosciuto");
+                    }catch(Exception original){
+                        String remembered=p.getString(key+"_url","");if(remembered.isEmpty()||remembered.equals(URLS[i]))throw original;
+                        page=fetchPage(remembered,2*1024*1024);items=parse(new String(page.bytes,StandardCharsets.UTF_8),i==1,page.url);
+                    }
                     if(items.isEmpty())throw new IOException("Nessuna novita leggibile");
                     publish(c,i,items);
-                    p.edit().putLong(key+"_success",System.currentTimeMillis()).putInt(key+"_count",items.size()).remove(key+"_error").apply();
+                    p.edit().putLong(key+"_success",System.currentTimeMillis()).putString(key+"_url",page.url).putInt(key+"_count",items.size()).remove(key+"_error").apply();
                 }catch(Exception e){p.edit().putString(key+"_error",e.getClass().getSimpleName()).apply();}
             }
         }finally{BUSY.set(false);}
@@ -113,4 +138,3 @@ public final class VeezieNews {
         RefreshActionCard.publish(c,channel);
     }
 }
-

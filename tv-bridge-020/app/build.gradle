@@ -8,7 +8,7 @@ android {
         applicationId 'com.fuoconero.tvbridge.test043'
         minSdk 26
         targetSdk 35
-        versionCode 51
+        versionCode 52
         versionName '0.4.3'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
@@ -21,4 +21,3 @@ dependencies {
     androidTestImplementation 'androidx.test:runner:1.6.2'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
 }
-

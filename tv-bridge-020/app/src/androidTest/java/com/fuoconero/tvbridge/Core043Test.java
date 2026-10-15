@@ -14,6 +14,16 @@ import org.json.JSONObject;
 
 /** Real Android SQLite/XML parser tests, isolated from the user's databases. */
 public class Core043Test {
+    @Test public void channelMoveFollowsHttpsAndRejectsUnrelatedCards()throws Exception{
+        assertEquals("https://new.example.org/",VeezieNews.redirect("https://old.example.org/","https://new.example.org/"));
+        assertEquals("https://old.example.org/new/",VeezieNews.redirect("https://old.example.org/","/new/"));
+        for(String url:new String[]{"http://new.example.org/","https://127.0.0.1/","https://user:pass@new.example.org/","javascript:alert(1)"}){
+            try{VeezieNews.redirect("https://old.example.org/",url);fail("Unsafe redirect accepted");}catch(Exception expected){}
+        }
+        String html="<li id=\"post-1\"><h2><a href=\"https://new.example.org/series/\">Test Series</a></h2></li>";
+        assertEquals(1,VeezieNews.parse(html,true,"https://new.example.org/").size());
+        assertTrue(VeezieNews.parse(html,true).isEmpty());
+    }
     @Test public void channelNewsParsesOnlyExpectedCardsAndDeduplicates(){
         String cb="<div class=\"card mp-post horizontal\"><img src=\"https://cb01uno.vip/a.jpg\"><h3 class=\"card-title\"><a href=\"https://cb01uno.vip/test/\">L&#8217;amore [HD] (2026)</a></h3>";
         java.util.ArrayList<VeezieNews.Item> movies=VeezieNews.parse(cb+cb,false);
@@ -191,4 +201,3 @@ public class Core043Test {
         }
     }
 }
-
