@@ -316,7 +316,7 @@ public class VeezieNavService extends AccessibilityService {
                 }
             }else if(stage==3){
                 if(!season.matches("[0-9]{1,3}")||!episode.matches("[0-9]{1,3}")){
-                    if(findLabel(root,new String[]{"riproduci","play"},true,false)!=null){
+                    if(findLabel(root,season.matches("[0-9]{1,3}")?new String[]{"episodi","episodes"}:new String[]{"riproduci","play"},true,false)!=null){
                         finish("Scheda contenuto aperta: "+title);return;
                     }
                     if(++attempts>20)finish("Titolo selezionato; scheda da completare manualmente");
@@ -457,10 +457,10 @@ public class VeezieNavService extends AccessibilityService {
         }
         ArrayDeque<AccessibilityNodeInfo> stack=new ArrayDeque<>();
         stack.add(root);int checked=0;
-        String expected=label(title);
+        String expected=titleLabel(title);
         while(!stack.isEmpty() && checked++<450){
             AccessibilityNodeInfo n=stack.removeFirst();
-            String text=label(n.getText());
+            String text=titleLabel(n.getText());
             // Never click the search field itself as if it were a result.
             if(n.isVisibleToUser() && !n.isEditable() && text.equals(expected)
                 && "st.veezie".contentEquals(n.getPackageName()))return n;
@@ -470,6 +470,11 @@ public class VeezieNavService extends AccessibilityService {
             }
         }
         return null;
+    }
+    private static String titleLabel(CharSequence value){
+        return label(value).replace("&"," e ").replace("’","'")
+            .replaceAll("\\s*\\((?:19|20)\\d{2}\\)\\s*$","")
+            .replaceAll("\\s+"," ").trim();
     }
     private static AccessibilityNodeInfo findLabel(AccessibilityNodeInfo root,
         String[] labels,boolean exact,boolean editable){
