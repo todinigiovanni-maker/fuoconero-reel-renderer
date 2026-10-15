@@ -14,6 +14,31 @@ import org.json.JSONObject;
 
 /** Real Android SQLite/XML parser tests, isolated from the user's databases. */
 public class Core043Test {
+    private void seriesEntry(IptvStore store,long id,String title,long first){
+        ContentValues v=new ContentValues();v.put("id",id);v.put("ident","series-test-"+id);v.put("title",title);v.put("grp","Serie");v.put("url","https://example.invalid/"+id);v.put("category","Serie");v.put("kind","Serie");v.put("adult",0);v.put("seen",first);v.put("first_seen",first);store.getWritableDatabase().insertOrThrow("entries",null,v);
+    }
+    @Test public void seriesHomeDistinguishesFirstAppearanceFromLaterEpisodes(){
+        try(IptvStore store=new IptvStore(ctx);IptvLibrary lib=new IptvLibrary(ctx)){
+            seriesEntry(store,1,"Old Show S01E01",10);ctx.getSharedPreferences(IptvStore.PREFS,0).edit().putLong("catalog_revision",1).commit();lib.ensureIndex();
+            assertTrue(lib.homeShows(false,12).isEmpty());assertTrue(lib.homeShows(true,12).isEmpty());
+            seriesEntry(store,2,"Old Show S01E02",20);seriesEntry(store,3,"New Show S01E01",20);ctx.getSharedPreferences(IptvStore.PREFS,0).edit().putLong("catalog_revision",2).commit();
+            assertEquals("New Show",lib.homeShows(false,12).get(0).title);assertEquals(1,lib.homeShows(false,12).size());
+            assertEquals("Old Show",lib.homeShows(true,12).get(0).title);assertEquals(2,lib.homeShows(true,12).get(0).count);
+            store.getWritableDatabase().delete("entries","id=1",null);ctx.getSharedPreferences(IptvStore.PREFS,0).edit().putLong("catalog_revision",3).commit();
+            assertEquals("Old Show",lib.homeShows(true,12).get(0).title);assertEquals("New Show",lib.homeShows(false,12).get(0).title);
+            assertEquals(2,lib.shows("",0,20,false).size());
+        }
+    }
+    @Test public void followedEpisodeRequiresFreshExactUnambiguousIdentity()throws Exception{
+        try(IptvLibrary lib=new IptvLibrary(ctx)){
+            SQLiteDatabase db=lib.getWritableDatabase();db.execSQL("INSERT INTO series_index VALUES(1,'show','Show',1,2,10)");db.execSQL("INSERT INTO source_series VALUES('show',10,'','123')");
+            JSONObject item=new JSONObject().put("tmdb","123").put("season",1).put("episode",2).put("expires",200);
+            assertEquals(1,FollowedEpisodes.match(lib,item,100));assertEquals(-1,FollowedEpisodes.match(lib,item,200));
+            item.put("episode",3);assertEquals(-1,FollowedEpisodes.match(lib,item,100));item.put("episode",2);
+            item.put("tmdb","456");assertEquals(-1,FollowedEpisodes.match(lib,item,100));item.put("tmdb","123");
+            db.execSQL("INSERT INTO series_index VALUES(2,'other','Other',1,2,10)");db.execSQL("INSERT INTO source_series VALUES('other',10,'','123')");assertEquals(-1,FollowedEpisodes.match(lib,item,100));
+        }
+    }
     @Test public void hidingSurvivesRefreshAndRestoreKeepsCatalog()throws Exception{
         ContentValues channel=new ContentValues();channel.put("type",android.media.tv.TvContract.Channels.TYPE_PREVIEW);channel.put("display_name","Fuoconero isolated visibility test");
         android.net.Uri channelUri=ctx.getContentResolver().insert(android.media.tv.TvContract.Channels.CONTENT_URI,channel);assertNotNull(channelUri);

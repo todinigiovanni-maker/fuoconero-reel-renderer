@@ -37,7 +37,7 @@ public final class IptvLibrary extends SQLiteOpenHelper {
         public long positionMs,durationMs,openedAt;
     }
     public IptvLibrary(Context ctx){
-        super(ctx,"fuoconero_library.db",null,3);
+        super(ctx,"fuoconero_library.db",null,4);
         app=ctx.getApplicationContext();
         setWriteAheadLoggingEnabled(true);
     }
@@ -58,6 +58,8 @@ public final class IptvLibrary extends SQLiteOpenHelper {
     private static void createSourceTables(SQLiteDatabase db){
         db.execSQL("CREATE TABLE IF NOT EXISTS source_movies(media_id INTEGER PRIMARY KEY, added_at INTEGER NOT NULL, artwork TEXT NOT NULL, tmdb TEXT NOT NULL DEFAULT '')");
         db.execSQL("CREATE TABLE IF NOT EXISTS source_series(series_key TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, artwork TEXT NOT NULL, tmdb TEXT NOT NULL DEFAULT '')");
+        db.execSQL("CREATE TABLE IF NOT EXISTS series_observed(series_key TEXT PRIMARY KEY, first_seen INTEGER NOT NULL)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS series_baseline(id INTEGER PRIMARY KEY, first_seen INTEGER NOT NULL)");
     }
     @Override public void onUpgrade(SQLiteDatabase db,int oldV,int newV){
         createSourceTables(db);
@@ -65,7 +67,8 @@ public final class IptvLibrary extends SQLiteOpenHelper {
             boolean has=false;try(Cursor c=db.rawQuery("PRAGMA table_info("+table+")",null)){while(c.moveToNext())if("tmdb".equals(c.getString(1)))has=true;}
             if(!has)db.execSQL("ALTER TABLE "+table+" ADD COLUMN tmdb TEXT NOT NULL DEFAULT ''");
         }
-        app.getSharedPreferences("iptv_metadata",Context.MODE_PRIVATE).edit().remove("success").apply();
+        if(oldV<3)app.getSharedPreferences("iptv_metadata",Context.MODE_PRIVATE).edit().remove("success").apply();
+        rememberSeries(db);
     }
     public String identity(long mediaId){
         try(Cursor c=getReadableDatabase().rawQuery("SELECT tmdb FROM source_movies WHERE media_id=?",new String[]{String.valueOf(mediaId)})){
@@ -131,6 +134,7 @@ public final class IptvLibrary extends SQLiteOpenHelper {
                     put.executeInsert();
                     if(++n%10000==0)Log.i(TAG,"Series indicizzate: "+n);
                 }
+                rememberSeries(db);
                 db.execSQL("INSERT OR REPLACE INTO index_state(id,indexed_at) VALUES(1,?)",
                     new Object[]{lastSuccess});
                 db.setTransactionSuccessful();
@@ -144,6 +148,20 @@ public final class IptvLibrary extends SQLiteOpenHelper {
         return app.getSharedPreferences(IptvStore.PREFS,Context.MODE_PRIVATE)
             .getLong("new_from",Long.MAX_VALUE);
     }
+    private static void rememberSeries(SQLiteDatabase db){
+        db.execSQL("INSERT OR IGNORE INTO series_observed SELECT series_key,MIN(first_seen) FROM series_index GROUP BY series_key");
+        db.execSQL("INSERT OR IGNORE INTO series_baseline SELECT 1,MIN(first_seen) FROM series_observed HAVING COUNT(*)>0");
+    }
+    /** Home classification uses observed playlist additions, never the show's release year. */
+    public ArrayList<Show> homeShows(boolean updated,int limit){
+        ensureIndex();ArrayList<Show> result=new ArrayList<>();
+        String having=updated?"MAX(i.first_seen)>o.first_seen":"MAX(i.first_seen)=o.first_seen AND o.first_seen>(SELECT first_seen FROM series_baseline WHERE id=1)";
+        String order=updated?"MAX(i.first_seen)":"o.first_seen";
+        try(Cursor q=getReadableDatabase().rawQuery("SELECT i.series_key,MAX(i.display_title),COUNT(*),MAX(i.media_id) FROM series_index i JOIN series_observed o ON o.series_key=i.series_key GROUP BY i.series_key HAVING "+having+" ORDER BY "+order+" DESC,i.series_key LIMIT ?",new String[]{String.valueOf(Math.min(50,Math.max(1,limit)))})){
+            while(q.moveToNext()){Show s=new Show();s.key=q.getString(0);s.title=q.getString(1);s.count=q.getInt(2);s.newestId=q.getLong(3);result.add(s);}
+        }return result;
+    }
+    static String homeSeriesLabel(String category){return "Serie".equals(category)?"Serie aggiunte al catalogo":"Ultime serie".equals(category)?"Serie con nuove puntate":category;}
     public ArrayList<Show> shows(String filter,int offset,int limit,boolean newOnly){
         ensureIndex();
         ArrayList<Show> result=new ArrayList<>();
@@ -280,4 +298,3 @@ public final class IptvLibrary extends SQLiteOpenHelper {
         return result;
     }
 }
-

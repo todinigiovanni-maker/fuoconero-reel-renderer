@@ -414,6 +414,16 @@ public final class TvSync {
             if(item.episode && item.episodesRemaining>=0)showsWithRemaining++;
             if(item.episode && !item.nextSeason.isEmpty())showsWithNext++;
         }
+        JSONArray followed=new JSONArray();
+        for(Item item:items.values())if(item.episode&&item.tmdb.matches("[1-9][0-9]*")&&!item.nextSeason.isEmpty()){
+            try{
+                JSONObject cached=new JSONObject(ctx.getSharedPreferences("tvbridge_next",Context.MODE_PRIVATE).getString(item.id,"{}"));
+                JSONObject candidate=new JSONObject().put("tmdb",item.tmdb).put("title",item.title).put("season",Integer.parseInt(item.nextSeason)).put("episode",Integer.parseInt(item.nextEpisodeNumber))
+                    .put("expires",cached.optLong("cached_at",0)+6L*3600L*1000L).put("art",RecentStore.image(ctx,item.id+".png"));
+                followed.put(candidate);
+            }catch(Exception ignored){}
+        }
+        ctx.getSharedPreferences(FollowedEpisodes.PREF,Context.MODE_PRIVATE).edit().putString("items",followed.toString()).apply();
         notify.say("Trakt: "+items.size()+" titoli. Scarico le locandine...");
         ArrayList<Item> cards=new ArrayList<>(items.values());
         int realPosters=0,progressCards=0,progressWithRuntime=0,progressImages=0,nextPosters=0;
@@ -445,6 +455,7 @@ public final class TvSync {
             .putInt("last_series_missing_progress",seriesWithoutProgress).apply();
         long channel=channel(ctx);
         updateCards(ctx,channel,cards,complete);
+        try{FollowedEpisodes.publish(ctx);}catch(Exception e){android.util.Log.w("FuoconeroTV","Prossime puntate IPTV non ancora disponibili",e);}
         int visible=countCards(ctx,channel);
         SyncJob.schedule(ctx);
         ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit()
@@ -1064,4 +1075,3 @@ public final class TvSync {
         p.edit().remove("channel_id").apply();
     }
 }
-

@@ -47,7 +47,7 @@ public final class IptvPublisher {
             if(showCategory || "Ultimi film".equals(category)||"Continua".equals(category)){
                 try(IptvLibrary library=new IptvLibrary(ctx)){
                     if(showCategory){
-                        showItems=library.shows("",0,12,"Ultime serie".equals(category));
+                        showItems=library.homeShows("Ultime serie".equals(category),12);
                         items=new ArrayList<>();
                         for(IptvLibrary.Show show:showItems){
                             IptvStore.Media media=new IptvStore.Media();
@@ -69,7 +69,7 @@ public final class IptvPublisher {
                     }
                 }
             }else items=store.list(category,"",0,12);
-            if(items.isEmpty())continue;
+            if(items.isEmpty()&&!showCategory)continue;
             String key="channel_"+category.replace(' ','_');
             long id=prefs.getLong(key,-1L);
             if(id>0){
@@ -82,14 +82,14 @@ public final class IptvPublisher {
             if(id>0){
                 ContentValues rename=new ContentValues();
                 rename.put(TvContract.Channels.COLUMN_DISPLAY_NAME,
-                    "Fuoconero · "+userPlaylist+" · "+("Ultime serie".equals(category)?"Serie aggiornate":category));
+                    "Fuoconero · "+userPlaylist+" · "+IptvLibrary.homeSeriesLabel(category));
                 ctx.getContentResolver().update(TvContract.buildChannelUri(id),
                     rename,null,null);
             }
             if(id<0){
                 ContentValues row=new ContentValues();
                 row.put(TvContract.Channels.COLUMN_TYPE,TvContract.Channels.TYPE_PREVIEW);
-                row.put(TvContract.Channels.COLUMN_DISPLAY_NAME,"Fuoconero · "+userPlaylist+" · "+category);
+                row.put(TvContract.Channels.COLUMN_DISPLAY_NAME,"Fuoconero · "+userPlaylist+" · "+IptvLibrary.homeSeriesLabel(category));
                 row.put(TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID,"fuoconero-iptv-051-"+category);
                 Intent home=new Intent(ctx,IptvActivity.class);
                 home.putExtra("category",category);
@@ -211,6 +211,7 @@ public final class IptvPublisher {
         }
         store.close();
         RecentStore.publish(ctx);
+        FollowedEpisodes.publish(ctx);
         return "Projectivy: "+all+" anteprime pubblicate in "+groups+
             " categorie; area adulti protetta da PIN con copertine neutre.";
     }
