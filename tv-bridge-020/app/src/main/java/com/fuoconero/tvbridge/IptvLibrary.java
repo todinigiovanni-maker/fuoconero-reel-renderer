@@ -150,7 +150,7 @@ public final class IptvLibrary extends SQLiteOpenHelper {
     }
     private static void rememberSeries(SQLiteDatabase db){
         db.execSQL("INSERT OR IGNORE INTO series_observed SELECT series_key,MIN(first_seen) FROM series_index GROUP BY series_key");
-        db.execSQL("INSERT OR IGNORE INTO series_baseline SELECT 1,MIN(first_seen) FROM series_observed HAVING COUNT(*)>0");
+        db.execSQL("INSERT OR IGNORE INTO series_baseline SELECT 1,first_seen FROM series_observed ORDER BY first_seen LIMIT 1");
     }
     /** Home classification uses observed playlist additions, never the show's release year. */
     public ArrayList<Show> homeShows(boolean updated,int limit){
