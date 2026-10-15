@@ -32,6 +32,7 @@ public class VeezieNavService extends AccessibilityService {
     private long lastAction=0;
     private int attempts=0;
     private boolean running=false;
+    private boolean searchDismissed=false;
 
     private final Runnable worker=new Runnable(){
         @Override public void run(){
@@ -253,7 +254,7 @@ public class VeezieNavService extends AccessibilityService {
         long id=p.getLong("request_id",-1);
         if(id!=requestId){
             requestId=id;
-            stage=0;attempts=0;lastAction=0;
+            stage=0;attempts=0;lastAction=0;searchDismissed=false;
             title=p.getString("title","").trim();
             season=p.getString("season","").trim();
             episode=p.getString("episode","").trim();
@@ -317,6 +318,11 @@ public class VeezieNavService extends AccessibilityService {
             }else if(stage==3){
                 if(!season.matches("[0-9]{1,3}")||!episode.matches("[0-9]{1,3}")){
                     if(findLabel(root,season.matches("[0-9]{1,3}")?new String[]{"episodi","episodes"}:new String[]{"riproduci","play"},true,false)!=null){
+                        // Veezie can render the detail behind its still-open search overlay.
+                        // Close that overlay once, only after the selected detail is present.
+                        if(!searchDismissed && findEdit(root)!=null){
+                            searchDismissed=true;performGlobalAction(GLOBAL_ACTION_BACK);lastAction=now;return;
+                        }
                         finish("Scheda contenuto aperta: "+title);return;
                     }
                     if(++attempts>20)finish("Titolo selezionato; scheda da completare manualmente");
@@ -565,4 +571,3 @@ public class VeezieNavService extends AccessibilityService {
         return false;
     }
 }
-
