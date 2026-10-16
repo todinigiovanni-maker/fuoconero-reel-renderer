@@ -7,7 +7,7 @@ import java.io.*;
 public final class ArtworkProvider extends ContentProvider {
     public boolean onCreate(){return true;}
     static File resolve(File dir,Uri u)throws IOException {
-        if(u.getPathSegments().size()!=1||!u.getLastPathSegment().matches("(app|item_[0-9]+)\\.png"))throw new FileNotFoundException();
+        if(u.getPathSegments().size()!=1||!u.getLastPathSegment().matches("(app|news|item_[0-9]+|new_[0-9]+)\\.png"))throw new FileNotFoundException();
         File f=new File(dir,u.getLastPathSegment());
         if(!f.getCanonicalFile().getParentFile().equals(dir.getCanonicalFile()))throw new FileNotFoundException();
         return f;

@@ -32,4 +32,28 @@ public class NetflixTest {
         Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();String u=Artwork.render(c,"app","Netflix","Test","",0,0);
         try(java.io.InputStream in=c.getContentResolver().openInputStream(Uri.parse(u))){android.graphics.Bitmap b=android.graphics.BitmapFactory.decodeStream(in);assertEquals(960,b.getWidth());assertEquals(540,b.getHeight());b.recycle();}
     }
+    @Test public void dailyJobReplacesOldIntervalAndSurvivesReboot(){
+        Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        android.app.job.JobScheduler scheduler=c.getSystemService(android.app.job.JobScheduler.class);
+        scheduler.cancel(RefreshJob.JOB_ID);
+        scheduler.schedule(new android.app.job.JobInfo.Builder(RefreshJob.JOB_ID,new ComponentName(c,RefreshJob.class)).setPeriodic(3600000).build());
+        RefreshJob.schedule(c);
+        android.app.job.JobInfo job=scheduler.getPendingJob(RefreshJob.JOB_ID);
+        assertNotNull(job);assertEquals(CatalogData.DAY,job.getIntervalMillis());assertTrue(job.isPersisted());
+        assertEquals(android.app.job.JobInfo.NETWORK_TYPE_ANY,job.getNetworkType());
+        RefreshJob.schedule(c);assertNotNull(scheduler.getPendingJob(RefreshJob.JOB_ID));
+    }
+    @Test public void catalogArtworkNamesStayWithinProvider()throws Exception{
+        java.io.File dir=InstrumentationRegistry.getInstrumentation().getTargetContext().getCacheDir();
+        assertEquals("new_123.png",ArtworkProvider.resolve(dir,Uri.parse("content://test/new_123.png")).getName());
+        assertEquals("news.png",ArtworkProvider.resolve(dir,Uri.parse("content://test/news.png")).getName());
+    }
+    @Test public void rebootAndUpgradeRescheduleOnlyIndependentJob(){
+        Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        android.app.job.JobScheduler scheduler=c.getSystemService(android.app.job.JobScheduler.class);
+        for(String action:new String[]{Intent.ACTION_BOOT_COMPLETED,Intent.ACTION_MY_PACKAGE_REPLACED}){
+            scheduler.cancel(RefreshJob.JOB_ID);new BootReceiver().onReceive(c,new Intent(action));
+            assertNotNull(scheduler.getPendingJob(RefreshJob.JOB_ID));
+        }
+    }
 }

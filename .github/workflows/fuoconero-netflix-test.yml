@@ -29,10 +29,10 @@ jobs:
           key: fuoconero-netflix-independent-signing-v1
       - name: Compile and lint independent application
         working-directory: netflix-test
-        run: gradle --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug
+        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: Fuoconero-Netflix-0.1.0-test
+          name: Fuoconero-Netflix-0.2.0-test
           path: netflix-test/app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v4
         with:
@@ -43,3 +43,8 @@ jobs:
         with:
           name: Fuoconero-Netflix-lint
           path: netflix-test/app/build/reports/lint-results-debug.*
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Fuoconero-Netflix-unit-tests
+          path: netflix-test/app/build/reports/tests/testDebugUnitTest/

@@ -1,0 +1,147 @@
+{
+  "checked_utc": "2026-10-16T22:29:00.338646+00:00",
+  "territory": "IT",
+  "source": "https://about.netflix.com/api/data/releases?language=it&country=IT",
+  "scope": "Public editorial release schedule, not complete catalog or account history",
+  "sony_connected": false,
+  "playback_verified": false,
+  "collections": [
+    {
+      "collection": 2694103,
+      "pages": 1,
+      "entries": 8
+    },
+    {
+      "collection": 2170013,
+      "pages": 1,
+      "entries": 19
+    }
+  ],
+  "recent_count": 16,
+  "samples": [
+    {
+      "netflix_id": 82027563,
+      "link": "https://www.netflix.com/watch/82027563",
+      "art_status": 200,
+      "art_type": "image/jpeg",
+      "source_dimensions": [
+        450,
+        630
+      ],
+      "link_http_status": 200,
+      "link_final_url": "https://www.netflix.com/it-en/title/82027563?fromWatch=true"
+    },
+    {
+      "netflix_id": 81786721,
+      "link": "https://www.netflix.com/watch/81786721",
+      "art_status": 200,
+      "art_type": "image/jpeg",
+      "source_dimensions": [
+        450,
+        630
+      ],
+      "link_http_status": 200,
+      "link_final_url": "https://www.netflix.com/it-en/title/81786721?fromWatch=true"
+    },
+    {
+      "netflix_id": 81958126,
+      "link": "https://www.netflix.com/watch/81958126",
+      "art_status": 200,
+      "art_type": "image/jpeg",
+      "source_dimensions": [
+        450,
+        630
+      ],
+      "link_http_status": 200,
+      "link_final_url": "https://www.netflix.com/it-en/title/81288983?fromWatch=true"
+    },
+    {
+      "netflix_id": 81922540,
+      "link": "https://www.netflix.com/watch/81922540",
+      "art_status": 200,
+      "art_type": "image/jpeg",
+      "source_dimensions": [
+        450,
+        630
+      ],
+      "link_http_error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "netflix_id": 82095529,
+      "link": "https://www.netflix.com/watch/82095529",
+      "art_status": 200,
+      "art_type": "image/jpeg",
+      "source_dimensions": [
+        450,
+        630
+      ],
+      "link_http_error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "netflix_id": 82682380,
+      "link": "https://www.netflix.com/watch/82682380",
+      "art_error": "<urlopen error Tunnel connection failed: 403 Forbidden>",
+      "link_http_error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "netflix_id": 81757047,
+      "link": "https://www.netflix.com/watch/81757047",
+      "art_error": "<urlopen error Tunnel connection failed: 403 Forbidden>",
+      "link_http_error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "netflix_id": 82065556,
+      "link": "https://www.netflix.com/watch/82065556",
+      "art_error": "<urlopen error Tunnel connection failed: 403 Forbidden>",
+      "link_http_error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "netflix_id": 81652678,
+      "link": "https://www.netflix.com/watch/81652678",
+      "art_error": "<urlopen error Tunnel connection failed: 403 Forbidden>",
+      "link_http_error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "netflix_id": 81744789,
+      "link": "https://www.netflix.com/watch/81744789",
+      "art_error": "<urlopen error Tunnel connection failed: 403 Forbidden>",
+      "link_http_error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "netflix_id": 82715728,
+      "link": "https://www.netflix.com/watch/82715728",
+      "art_error": "<urlopen error Tunnel connection failed: 403 Forbidden>",
+      "link_http_error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "netflix_id": 82696841,
+      "link": "https://www.netflix.com/watch/82696841",
+      "art_error": "<urlopen error Tunnel connection failed: 403 Forbidden>",
+      "link_http_error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "netflix_id": 81916859,
+      "link": "https://www.netflix.com/watch/81916859",
+      "art_error": "<urlopen error Tunnel connection failed: 403 Forbidden>",
+      "link_http_error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "netflix_id": 81680909,
+      "link": "https://www.netflix.com/watch/81680909",
+      "art_error": "<urlopen error Tunnel connection failed: 403 Forbidden>",
+      "link_http_error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "netflix_id": 82147777,
+      "link": "https://www.netflix.com/watch/82147777",
+      "art_error": "<urlopen error Tunnel connection failed: 403 Forbidden>",
+      "link_http_error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    {
+      "netflix_id": 81952372,
+      "link": "https://www.netflix.com/watch/81952372",
+      "art_error": "<urlopen error Tunnel connection failed: 403 Forbidden>",
+      "link_http_error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    }
+  ]
+}
