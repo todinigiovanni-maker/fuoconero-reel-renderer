@@ -7,7 +7,7 @@ import android.widget.*;
 public final class MainActivity extends Activity {
     TextView status;Button sync;
     public void onCreate(Bundle b) {
-        super.onCreate(b);LinearLayout l=new LinearLayout(this);l.setOrientation(1);l.setPadding(64,32,64,32);
+        super.onCreate(b);LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);l.setPadding(64,32,64,32);
         ScrollView sc=new ScrollView(this);sc.addView(l);setContentView(sc);
         TextView title=new TextView(this);title.setText("Fuoconero · Netflix TEST");title.setTextSize(32);l.addView(title);
         status=new TextView(this);status.setTextSize(21);status.setPadding(0,20,0,20);l.addView(status);

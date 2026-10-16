@@ -8,7 +8,7 @@ public final class OpenActivity extends Activity {
         super.onCreate(b);
         String key=getIntent().getStringExtra("key");
         if("app".equals(key)){openApp();return;}
-        LinearLayout l=new LinearLayout(this);l.setOrientation(1);l.setPadding(64,40,64,40);setContentView(l);
+        LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);l.setPadding(64,40,64,40);setContentView(l);
         TextView t=new TextView(this);t.setTextSize(24);t.setText("Apertura del contenuto Netflix…");l.addView(t);
         Button fallback=new Button(this);fallback.setText("Apri Netflix");fallback.setOnClickListener(v->openApp());l.addView(fallback);
         // Reload the shared source by ID; never accept an arbitrary launch intent from the caller.
