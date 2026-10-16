@@ -1,7 +1,7 @@
 # Fuoconero Netflix — independent feasibility APK
 
 Base: `fuoconero-tv-bridge-043-netflix-safe-test`, commit `76eeb2f30c865dafbebf7976712a57b6842f7ddd`.
-Application ID: `com.fuoconero.netflixbridge.test`, version 0.2.0-test (2).
+Application ID: `com.fuoconero.netflixbridge.newsit.test`, version 0.2.0-test (2). This variant installs alongside the original 0.1 test package.
 This standalone Gradle project does not build or update tv-bridge-020. No stable app, credentials, playlist or database is copied or modified.
 
 ## Feasibility established before implementation
@@ -50,4 +50,4 @@ Successful catalog refreshes are atomically saved and cached for 24 hours; faile
 
 Build also runs 12 pure JVM catalog tests and Android runtime tests under Robolectric, plus compiles the on-device instrumentation APK. Robolectric simulates Android; it is not a Sony or Netflix interoperability test. To repeat the read-only live source check: `python tools/check_public_source.py` (requires Pillow for image decoding). Its report explicitly marks Sony connection and playback as unverified.
 
-After installing the CI APK, open the app and enable **both** channels in Projectivy > Modifica canali. The existing permission is needed only for Continua a guardare, not for public news. CI reuses the pre-existing independent-test debug signing cache. A locally signed build can have a different certificate and must not be installed over the previous test package by uninstalling it or deleting its data merely to bypass that mismatch.
+After installing the CI APK, open the app and enable **both** channels in Projectivy > Modifica canali. The existing permission is needed only for Continua a guardare, not for public news. Signature comparison found that the old workflow never saved its debug key: its cache path did not exist. The old installed test certificate and the first 0.2 CI certificate differed. That first 0.2 artifact is superseded and must not be used to update the old package. This variant therefore uses a new application ID and a matching dynamic artwork authority, so it installs alongside the original 0.1 test without uninstalling or modifying it. The CI workflow explicitly creates/restores a test key at FUOCONERO_TEST_KEYSTORE before building and caches that exact file for subsequent updates of this new package. The artifact is named Fuoconero-Netflix-Novita-Italia-0.2.0-test. Once installed, enable the new app's two channels in Projectivy; the old test app remains separately available.

@@ -1,6 +1,6 @@
 {
-  "checked_utc": "2026-10-16T22:30:52.376310+00:00",
-  "application_id": "com.fuoconero.netflixbridge.test",
+  "checked_utc": "2026-10-16T22:36:00.533622+00:00",
+  "application_id": "com.fuoconero.netflixbridge.newsit.test",
   "version": "0.2.0-test",
   "version_code": 2,
   "build": "successful",
@@ -18,5 +18,7 @@
   "lint_errors": 0,
   "lint_warnings": 12,
   "sony_accessible": false,
-  "stable_projects_modified": false
+  "stable_projects_modified": false,
+  "installs_alongside_original_test": true,
+  "signing_config": "explicit FUOCONERO_TEST_KEYSTORE in CI, exact key file cached"
 }
