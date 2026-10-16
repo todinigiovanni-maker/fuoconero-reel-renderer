@@ -1,0 +1,24 @@
+{
+  "checked_utc": "2026-10-16T22:36:00.533622+00:00",
+  "application_id": "com.fuoconero.netflixbridge.newsit.test",
+  "version": "0.2.0-test",
+  "version_code": 2,
+  "build": "successful",
+  "tasks": [
+    "testDebugUnitTest",
+    "assembleDebug",
+    "assembleDebugAndroidTest",
+    "lintDebug"
+  ],
+  "jvm_tests": 27,
+  "failures": 0,
+  "simulated_android_runtime_tests": 15,
+  "plain_jvm_catalog_tests": 12,
+  "on_device_instrumentation_apk": "compiled, not run on Sony in this session",
+  "lint_errors": 0,
+  "lint_warnings": 12,
+  "sony_accessible": false,
+  "stable_projects_modified": false,
+  "installs_alongside_original_test": true,
+  "signing_config": "explicit FUOCONERO_TEST_KEYSTORE in CI, exact key file cached"
+}
